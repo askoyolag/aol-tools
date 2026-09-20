@@ -75,9 +75,13 @@ def build(args):
         sys.exit('Purple Pen-prosjektet bruker %s som kart. Georeferering krever '
                  'OCAD-fila – oppgi den med --ocd, eller sett opp arrangementet '
                  'manuelt i Livelox.' % os.path.basename(ocd))
-    geo = Georeference(ocd)
-    if not geo.realworld or not geo.epsg:
+    geo = Georeference(ocd, args.epsg)
+    if not geo.realworld:
         sys.exit('Kartet %s er ikke georeferert. Georeferer det i OCAD først.' % os.path.basename(ocd))
+    if not geo.epsg:
+        sys.exit('Kartet %s har koordinater, men oppgir ikke hvilket system. '
+                 'Sett det i OCAD, eller bruk --epsg (25832/32632 for UTM 32N).'
+                 % os.path.basename(ocd))
 
     controls, seen = [], {}
     for c in p.controls.values():
@@ -180,6 +184,7 @@ def main():
     ap.add_argument('--ocd', help='kartfil, dersom .ppen ikke peker på en fil som finnes her')
     ap.add_argument('--map', help='kartbilde (PNG/TIFF/JPEG/KMZ) til opplasting')
     ap.add_argument('--world', help='world-fil til kartbildet (.pgw/.tfw); finnes automatisk ved siden av bildet')
+    ap.add_argument('--epsg', type=int, help='overstyr koordinatsystemet til kartet')
     ap.add_argument('--id', help='egen id for arrangementet (standard: filnavnet)')
     ap.add_argument('--out', default='.', help='hvor JSON-fila skrives')
     ap.add_argument('--post', action='store_true', help='last opp til Livelox (krever LIVELOX_API_KEY)')
