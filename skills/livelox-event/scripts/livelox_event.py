@@ -43,19 +43,38 @@ def find_map_file(ppen, explicit):
         cand = os.path.join(base, ppen.map_file)
         if os.path.exists(cand):
             return cand
-    if ppen.map_path:                      # Windows absolute path from the .ppen
-        tail = ppen.map_path.replace('\\', '/').split('/')[-1]
-        cand = os.path.join(base, tail)
+    names = [n for n in (ppen.map_file,
+                         ppen.map_path.replace('\\', '/').split('/')[-1] if ppen.map_path else None) if n]
+    for n in names:
+        cand = os.path.join(base, n)
         if os.path.exists(cand):
             return cand
+    # kartet kan ligge i en annen mappe i kartarkivet - let oppover og nedover
+    root = base
+    for _ in range(3):
+        root = os.path.dirname(root)
+        for dirpath, _dirs, fnames in os.walk(root):
+            for n in names:
+                if n in fnames:
+                    return os.path.join(dirpath, n)
+        if os.path.ismount(root) or root == os.path.dirname(root):
+            break
     return None
 
 
 def build(args):
-    p = PurplePen(args.ppen)
+    try:
+        p = PurplePen(args.ppen)
+    except Exception as e:
+        sys.exit('Klarte ikke lese %s: %s' % (os.path.basename(args.ppen), e))
     ocd = find_map_file(p, args.ocd)
     if not ocd:
-        sys.exit('Fant ikke OCAD-kartet som .ppen-fila peker på. Bruk --ocd.')
+        sys.exit('Fant ikke kartfila som .ppen-fila peker på (%s). Bruk --ocd.'
+                 % (p.map_file or 'ukjent'))
+    if not ocd.lower().endswith('.ocd'):
+        sys.exit('Purple Pen-prosjektet bruker %s som kart. Georeferering krever '
+                 'OCAD-fila – oppgi den med --ocd, eller sett opp arrangementet '
+                 'manuelt i Livelox.' % os.path.basename(ocd))
     geo = Georeference(ocd)
     if not geo.realworld or not geo.epsg:
         sys.exit('Kartet %s er ikke georeferert. Georeferer det i OCAD først.' % os.path.basename(ocd))

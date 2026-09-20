@@ -87,6 +87,8 @@ innlogget Livelox-bruker fullfører importen med ett klikk.
   etter kartfila ved siden av `.ppen`-fila; ellers oppgi `--ocd`.
 - Poster med lik kode i flere løyper er samme post i Livelox. Start og mål får
   kodene `S` og `F` når Purple Pen ikke har egne koder.
+- **PDF-kart i Purple Pen** kan ikke georefereres. Peker prosjektet på en PDF,
+  oppgi OCAD-kartet med `--ocd`, eller sett opp arrangementet manuelt.
 - Uten løypetrykk (SVG/PDF) tegner Livelox strekene selv ut fra postposisjonene –
   uten kuttede ringer og forbudte områder.
 - Poengløp (`kind="score"` i Purple Pen) må settes til *Rogaining* på klassene i
