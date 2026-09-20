@@ -100,15 +100,21 @@ class OcadFile:
     def _read_obj(self, pos, sym, otp, rc):
         b = self.b
         n_item, = struct.unpack_from('<I', b, pos + 44)
+        n_text, = struct.unpack_from('<H', b, pos + 48)
         co = pos + 56
         rings, cur = [], []
+        n_item = min(n_item, max(0, (len(b) - co) // 8))
         for k in range(n_item):
             x, y = struct.unpack_from('<ii', b, co + k * 8)
             if (y & 2) and cur:          # first point of a hole
                 rings.append(cur); cur = []
             cur.append(((x >> 8) / 100.0, (y >> 8) / 100.0))
         if cur: rings.append(cur)
-        return dict(sym=sym, otp=otp, rings=rings,
+        text = ''
+        if n_text:
+            raw = b[co + n_item*8: co + n_item*8 + n_text*8]
+            text = raw.decode('utf-16-le', 'replace').split('\x00', 1)[0]
+        return dict(sym=sym, otp=otp, rings=rings, text=text,
                     rc=tuple((v >> 8) / 100.0 for v in rc))
 
     # ---------- helpers ----------

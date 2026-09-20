@@ -91,3 +91,29 @@ def analyse(path, close_m=25.0, stray_m=15.0, max_cells=2200, min_frac=0.03, max
     res['main_bbox_m'] = clusters[0]['bbox_m']
     res['main_bbox_area_m2'] = clusters[0]['bbox_area_m2']
     return res
+
+
+def hull_area(path, exclude_syms=(), ratio=0.12, grid_m=10.0, simplify_m=40.0):
+    """Area inside a concave hull around the map content.
+
+    For maps with a lot of open water, where a closed outline around the land
+    is wanted rather than the full extent of the (huge) sea polygon.
+    `exclude_syms` should list imported clutter that sits outside the map
+    (masts, street lighting) and the sea area symbol itself.
+    Returns (area_m2, hull_polygon, n_points).
+    """
+    import numpy as np
+    from shapely.geometry import MultiPoint
+    from shapely import concave_hull
+    o = OcadFile(path)
+    f = o.setup['scale']/1000.0
+    ex = set(exclude_syms)
+    pts = [p for ob in o.objects()
+           if ob['otp'] in GEOM_TYPES and ob['sym'] not in ex
+           for r in ob['rings'] for p in r]
+    P = np.array(pts)*f
+    G = np.unique(np.round(P/grid_m).astype(np.int64), axis=0)*grid_m
+    h = concave_hull(MultiPoint([tuple(p) for p in G]), ratio=ratio)
+    if simplify_m:
+        h = h.simplify(simplify_m)
+    return float(h.area), h, len(G)
