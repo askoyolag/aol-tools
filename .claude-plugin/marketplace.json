@@ -1,0 +1,7 @@
+{
+  "name": "aol-kart",
+  "owner": { "name": "Askøy orienteringslag" },
+  "plugins": [
+    { "name": "ocad-tools", "source": "./", "description": "Verktøy for å lese og måle OCAD-kartfiler (.ocd)." }
+  ]
+}

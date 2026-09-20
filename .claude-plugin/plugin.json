@@ -1,0 +1,6 @@
+{
+  "name": "ocad-tools",
+  "description": "Les og mål OCAD-kartfiler (.ocd): målestokk, georeferering, trykkramme, blending og areal.",
+  "version": "1.0.0",
+  "author": { "name": "Askøy orienteringslag" }
+}
