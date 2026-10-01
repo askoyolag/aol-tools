@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Finn georefereringen til et ugeoreferert OCAD-kart ved å matche vannflater
 mot OpenStreetMap.
 

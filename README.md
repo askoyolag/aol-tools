@@ -5,6 +5,17 @@ Pakket som en Claude-plugin, men skriptene kan kjøres rett fra kommandolinjen
 uten Claude. Alt er Python uten avhengigheter utover standardbiblioteket, med
 unntak av arealberegningen.
 
+Har du ikke Python på maskinen, er [uv](https://docs.astral.sh/uv/) den
+enkleste veien – den henter riktig Python selv:
+
+```powershell
+winget install --id=astral-sh.uv -e      # Windows
+uv run skills/livelox-event/scripts/livelox_event.py --help
+```
+
+Skriptene oppgir hvilken Python de trenger, så `uv run` laster den ned hvis
+den mangler. Har du Python fra før, fungerer `python3` like godt.
+
 - **CourseImport** (`skills/livelox-event`) – setter opp Livelox-arrangementer
   fra løypefiler. Leser Purple Pen (`.ppen`) eller OCAD Course Setting,
   georefererer postene fra kartet og laster opp alt til Livelox' import-API, så
@@ -23,8 +34,8 @@ Et treningsløp i Livelox krever arrangement, kart, løyper og klasser. Det tar
 selve import-klikket:
 
 ```
-python3 skills/livelox-event/scripts/livelox_auth.py          # én gang per maskin
-python3 skills/livelox-event/scripts/livelox_event.py "Trening mai.ppen" \
+uv run skills/livelox-event/scripts/livelox_auth.py           # én gang per maskin
+uv run skills/livelox-event/scripts/livelox_event.py "Trening mai.ppen" \
     --start 2026-05-12T18:00 --end 2026-05-12T21:00 \
     --name "Tirsdagstrening" --post
 ```

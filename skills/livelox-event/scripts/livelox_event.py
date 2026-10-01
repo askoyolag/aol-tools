@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Build (and optionally upload) a Livelox importable event from a Purple Pen file.
 
 Reads a .ppen course file plus the georeferencing of its OCAD background map,

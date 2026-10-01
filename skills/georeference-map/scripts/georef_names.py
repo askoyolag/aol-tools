@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Georeferer et OCAD-kart ved hjelp av stedsnavnene som står på kartet.
 
 Kartet har allerede fasiten i seg: navn som «Skråmestøvatnet» og «Ådlandsvik»

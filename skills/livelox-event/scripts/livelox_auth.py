@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """OAuth2 (Authorization Code + PKCE) mot Livelox.
 
 Livelox gir ikke klubber API-nøkkel; verktøy som dette autoriseres av brukeren
