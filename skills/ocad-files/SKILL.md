@@ -1,6 +1,6 @@
 ---
 name: ocad-files
-description: Read, inspect and measure OCAD orienteering map files (.ocd) — scale, georeferencing, symbols, colours, print frame, white-out blending and area. Use for any .ocd file question.
+description: Read, inspect and measure OCAD orienteering map files (.ocd) — scale, georeferencing, symbols, colours, print frame, white-out blending and area. Use for any .ocd file question, og for spørsmål om kartfiler, målestokk, trykkramme og kartareal.
 ---
 
 # Working with OCAD (.ocd) files

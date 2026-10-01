@@ -1,6 +1,6 @@
 ---
 name: livelox-event
-description: Set up Livelox events for races and training runs — read Purple Pen (.ppen) courses, georeference them from the OCAD map, and build or upload a Livelox importable event. Use for Livelox, treningsløp, løypefiler and .ppen questions.
+description: Set up Livelox events for races and training runs — read Purple Pen (.ppen) courses, georeference them from the OCAD map, and build or upload a Livelox importable event. Use for Livelox, treningsløp, løyper, løypefiler, .ppen and course setting questions.
 ---
 
 # Livelox-arrangement fra løypefiler

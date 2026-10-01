@@ -54,11 +54,17 @@ def find_map_file(ppen, explicit):
         cand = os.path.join(base, n)
         if os.path.exists(cand):
             return cand
-    # kartet kan ligge i en annen mappe i kartarkivet - let oppover og nedover
-    root = base
+    # kartet kan ligge i en annen mappe i kartarkivet - let oppover og nedover.
+    # Søket er begrenset: en umettelig os.walk fra hjemmemappa er ikke noe å
+    # utsette en løypelegger for.
+    root, seen = base, 0
     for _ in range(3):
         root = os.path.dirname(root)
-        for dirpath, _dirs, fnames in os.walk(root):
+        for dirpath, dirs, fnames in os.walk(root):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            seen += 1
+            if seen > 5000:
+                return None
             for n in names:
                 if n in fnames:
                     return os.path.join(dirpath, n)

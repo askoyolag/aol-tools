@@ -1,6 +1,6 @@
 ---
 name: georeference-map
-description: EKSPERIMENTELL - finn georefereringen til et ugeoreferert OCAD-kart ved å matche vannflater mot OpenStreetMap eller stedsnavn mot Kartverket. Les kontrollresultatene før du stoler på et svar.
+description: EXPERIMENTAL - work out the georeferencing of an OCAD map that has none, by matching lakes against OpenStreetMap or place names against Kartverket. Read the control results in this skill before trusting an answer. Bruk for ugeoreferert kart, georeferering og kartplassering.
 ---
 
 # Georeferering av gamle o-kart

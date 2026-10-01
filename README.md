@@ -9,12 +9,22 @@ Har du ikke Python på maskinen, er [uv](https://docs.astral.sh/uv/) den
 enkleste veien – den henter riktig Python selv:
 
 ```powershell
-winget install --id=astral-sh.uv -e      # Windows
+winget install --id=astral-sh.uv -e                     # Windows
+```
+```bash
+brew install uv                                         # macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh         # macOS og Linux
+```
+
+Deretter, uansett plattform:
+
+```
 uv run skills/livelox-event/scripts/livelox_event.py --help
 ```
 
-Skriptene oppgir hvilken Python de trenger, så `uv run` laster den ned hvis
-den mangler. Har du Python fra før, fungerer `python3` like godt.
+Skriptene oppgir hvilken Python de trenger (3.11 eller nyere), så `uv run`
+laster den ned hvis den mangler. Har du Python fra før, fungerer `python3`
+like godt.
 
 - **CourseImport** (`skills/livelox-event`) – setter opp Livelox-arrangementer
   fra løypefiler. Leser Purple Pen (`.ppen`) eller OCAD Course Setting,
@@ -74,7 +84,7 @@ skillene forklarer resten.
 ## Testing
 
 ```
-python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
 ```
 
 Testene lager sine egne kart- og løypefiler og kjører hele opplastingen mot en
