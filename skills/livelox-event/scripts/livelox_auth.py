@@ -12,7 +12,7 @@ import threading, urllib.error, urllib.parse, urllib.request, webbrowser
 
 AUTHORIZE = 'https://api.livelox.com/oauth2/authorize'
 TOKEN = 'https://api.livelox.com/oauth2/token'
-CLIENT_ID = os.environ.get('LIVELOX_CLIENT_ID', 'Løypeimport')
+CLIENT_ID = os.environ.get('LIVELOX_CLIENT_ID', 'CourseImport')
 REDIRECT = os.environ.get('LIVELOX_REDIRECT_URI', 'http://localhost:8731/livelox/callback')
 SCOPE = 'events.import'
 STORE = os.path.expanduser(os.environ.get('LIVELOX_TOKEN_FILE', '~/.config/livelox/tokens.json'))
