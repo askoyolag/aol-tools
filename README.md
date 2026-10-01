@@ -34,6 +34,7 @@ Eller lokalt, når repoet er klonet:
 - `skills/livelox-event/scripts/ppen.py` – leser Purple Pen-løypefiler
 - `skills/livelox-event/scripts/ocad_geo.py` – kartmillimeter → projiserte koordinater
 - `skills/livelox-event/scripts/livelox_event.py` – bygger og laster opp Livelox-arrangement
+- `skills/livelox-event/scripts/livelox_auth.py` – OAuth2-innlogging mot Livelox
 
 `ocad-files` krever `numpy`, `scipy`, `Pillow`, `shapely` (og `pyproj` for
 koordinater). `livelox-event` klarer seg med standardbiblioteket.

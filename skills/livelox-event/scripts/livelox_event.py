@@ -13,11 +13,12 @@ Livelox user finishes the import with one click.
   python3 livelox_event.py trening.ppen --start 2026-05-12T18:00 \
       --end 2026-05-12T21:00 --name "Tirsdagstrening" --club "Askøy OL"
 """
-import argparse, datetime as dt, json, os, re, sys, urllib.error, urllib.request, zoneinfo
+import argparse, datetime as dt, json, os, re, sys, urllib.error, urllib.parse, urllib.request, zoneinfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ppen import PurplePen
 from ocad_geo import Georeference
+import livelox_auth
 
 API = 'https://api.livelox.com'
 TYPE_MAP = {'start': 'Start', 'normal': 'Control', 'finish': 'Finish'}
@@ -126,46 +127,59 @@ def build(args):
     }
 
     files = {}
-    if args.map:
-        world = args.world
-        if not world:
-            cand = os.path.splitext(args.map)[0] + WORLD_EXT.get(os.path.splitext(args.map)[1].lower(), '')
-            world = cand if os.path.exists(cand) else None
-        m = {'fileName': os.path.basename(args.map), 'name': os.path.splitext(os.path.basename(ocd))[0],
+    mapfile = args.map or (None if args.no_map else ocd)
+    if mapfile:
+        m = {'fileName': os.path.basename(mapfile),
+             'name': os.path.splitext(os.path.basename(ocd))[0],
              'mapScale': int(p.map_scale or geo.scale)}
-        files[os.path.basename(args.map)] = args.map
-        if world:
-            m['georeference'] = {'worldFileName': os.path.basename(world)}
-            files[os.path.basename(world)] = world
+        files[os.path.basename(mapfile)] = mapfile
+        # OCD, OOM og KMZ bærer georefereringen selv; rasterkart trenger world-fil
+        if os.path.splitext(mapfile)[1].lower() not in ('.ocd', '.oom', '.kmz'):
+            world = args.world
+            if not world:
+                cand = os.path.splitext(mapfile)[0] + WORLD_EXT.get(os.path.splitext(mapfile)[1].lower(), '')
+                world = cand if os.path.exists(cand) else None
+            if world:
+                m['georeference'] = {'worldFileName': os.path.basename(world)}
+                files[os.path.basename(world)] = world
         ev['maps'] = [m]
     return ev, files, geo, ocd
 
 
-def request(method, url, key, data=None, ctype='application/json'):
+def request(method, url, auth, data=None, ctype='application/json', retry=True):
+    """auth er enten ('Bearer', token) eller ('ApiKey', key)."""
     req = urllib.request.Request(url, data=data, method=method)
-    req.add_header('ApiKey', key)
+    if auth[0] == 'Bearer':
+        req.add_header('Authorization', 'Bearer ' + auth[1])
+    else:
+        req.add_header('ApiKey', auth[1])
     if data is not None:
         req.add_header('Content-Type', ctype)
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:
             body = r.read().decode('utf-8') or '{}'
             return r.status, (json.loads(body) if body.strip().startswith(('{', '[')) else body)
     except urllib.error.HTTPError as e:
+        if e.code == 403 and auth[0] == 'Bearer' and retry:
+            fresh = livelox_auth.refresh()        # utløpt token gir 403
+            if fresh:
+                return request(method, url, ('Bearer', fresh), data, ctype, retry=False)
         return e.code, e.read().decode('utf-8', 'replace')
 
 
-def post(ev, files, key):
-    status, res = request('POST', API + '/importableEvents', key,
+def post(ev, files, auth):
+    status, res = request('POST', API + '/importableEvents', auth,
                           json.dumps(ev).encode('utf-8'))
     if status != 200:
         sys.exit('POST /importableEvents feilet (%s): %s' % (status, res))
     eid = res['id']
     for name, path in files.items():
         with open(path, 'rb') as f:
-            s, r = request('POST', '%s/importableEvents/%s/files/%s' % (API, eid, name), key,
+            s, r = request('POST', '%s/importableEvents/%s/files/%s'
+                           % (API, eid, urllib.parse.quote(name)), auth,
                            f.read(), 'application/octet-stream')
-        print('  last opp %-30s %s' % (name, s))
-    s, r = request('GET', '%s/importableEvents/%s/validationErrors' % (API, eid), key)
+        print('  last opp %-34s %s  (%.1f MB)' % (name, s, os.path.getsize(path)/1e6))
+    s, r = request('GET', '%s/importableEvents/%s/validationErrors' % (API, eid), auth)
     print('Validering:', json.dumps(r, ensure_ascii=False))
     print('\nÅpne denne i nettleseren og fullfør importen:\n  %s' % res.get('liveloxImportEventUrl'))
     return res
@@ -182,7 +196,8 @@ def main():
     ap.add_argument('--country', default='NOR')
     ap.add_argument('--level', default='club', choices=['club', 'local', 'regional', 'national', 'international'])
     ap.add_argument('--ocd', help='kartfil, dersom .ppen ikke peker på en fil som finnes her')
-    ap.add_argument('--map', help='kartbilde (PNG/TIFF/JPEG/KMZ) til opplasting')
+    ap.add_argument('--map', help='annen kartfil enn OCAD-kartet .ppen-fila peker på (PNG/TIFF/JPEG/KMZ/OCD/OOM)')
+    ap.add_argument('--no-map', action='store_true', help='ikke send kart - det finnes allerede i Livelox')
     ap.add_argument('--world', help='world-fil til kartbildet (.pgw/.tfw); finnes automatisk ved siden av bildet')
     ap.add_argument('--epsg', type=int, help='overstyr koordinatsystemet til kartet')
     ap.add_argument('--id', help='egen id for arrangementet (standard: filnavnet)')
@@ -194,8 +209,10 @@ def main():
     print('Kart:      %s  (1:%g, EPSG:%s, %.1f°)' % (os.path.basename(ocd), geo.scale, geo.epsg, geo.angle))
     print('Løyper:    %s' % ', '.join('%s (%s m)' % (c['name'], c.get('length', '?')) for c in ev['courses']))
     print('Poster:    %d' % len(ev['controls']))
-    if 'maps' not in ev:
-        print('Kartbilde: ingen - last opp kartfila i Livelox etterpå, eller bruk --map')
+    if 'maps' in ev:
+        print('Kart:      sender %s' % ev['maps'][0]['fileName'])
+    else:
+        print('Kart:      ingen - forutsetter at kartet alt ligger i Livelox')
 
     out = os.path.join(args.out, 'livelox-%s.json' % ev['id'])
     with open(out, 'w', encoding='utf-8') as f:
@@ -204,9 +221,10 @@ def main():
 
     if args.post:
         key = os.environ.get('LIVELOX_API_KEY')
-        if not key:
-            sys.exit('LIVELOX_API_KEY er ikke satt.')
-        post(ev, files, key)
+        auth = ('ApiKey', key) if key else ('Bearer', livelox_auth.access_token())
+        if not auth[1]:
+            sys.exit('Ingen tilgang til Livelox. Kjør livelox_auth.py for å logge inn.')
+        post(ev, files, auth)
 
 
 if __name__ == '__main__':

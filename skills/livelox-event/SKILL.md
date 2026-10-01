@@ -51,18 +51,26 @@ kartets papirkoordinatsystem, samme system som OCAD bruker.
 koordinater. Bruker parseren i `ocad-files`-skillen.
 
 `scripts/livelox_event.py` setter sammen et *importable event object* slik
-Livelox' integrasjons-API vil ha det:
+Livelox' integrasjons-API vil ha det, og laster opp OCAD-kartet sammen med
+løypene:
 
 ```
 python3 livelox_event.py "Trening mai 2026.ppen" \
     --start 2026-05-12T18:00 --end 2026-05-12T21:00 \
-    --name "Tirsdagstrening Brenneklubben" [--map kart.png] [--post]
+    --name "Tirsdagstrening Brenneklubben" [--post]
 ```
 
-Uten `--post` skrives JSON-fila til disk så den kan kontrolleres. Med
-`--post` og `LIVELOX_API_KEY` satt opprettes den importerbare hendelsen,
-filene lastes opp, valideringen kjøres, og skriptet skriver ut URL-en der en
-innlogget Livelox-bruker fullfører importen med ett klikk.
+Kartet hentes fra fila `.ppen` peker på; `--map` overstyrer, `--no-map` dropper
+opplastingen når kartet alt ligger i Livelox. Uten `--post` skrives JSON-fila
+til disk så den kan kontrolleres. Med `--post` opprettes den importerbare
+hendelsen, filene lastes opp, valideringen kjøres, og skriptet skriver ut
+URL-en der løypeleggeren fullfører importen med ett klikk.
+
+`scripts/livelox_auth.py` håndterer innloggingen (OAuth2 Authorization Code med
+PKCE). Kjør den én gang per maskin: nettleseren åpnes, løypeleggeren logger inn
+i Livelox og godkjenner. Tokenet lagres i `~/.config/livelox/tokens.json` og
+fornyes automatisk – refresh-token utløper ikke. Klient-id og redirect-URI kan
+settes med `LIVELOX_CLIENT_ID` og `LIVELOX_REDIRECT_URI`.
 
 ## API-et (api.livelox.com)
 
@@ -71,12 +79,17 @@ innlogget Livelox-bruker fullfører importen med ett klikk.
 - `GET /importableEvents/{id}/validationErrors` før du sender brukeren videre.
 - `PUT /importableEvents/{id}` + `PUT /importableEvents/{id}/import` oppdaterer et
   allerede importert arrangement **uten** omvei om nettleseren.
-- Autorisering: `ApiKey`-header, eller OAuth2 med scope `events.import`. Nøkkel
-  avtales med info@livelox.com; det finnes ingen selvbetjent registrering.
-- Kartbilder i API-et må være PNG/TIFF/JPEG/GIF/KMZ med world-fil eller
-  koordinatmapping – `.ocd` godtas bare i web-grensesnittet. Uten kartbilde:
-  send inn løypene og legg kartet til i Livelox etterpå.
-- Klassifiseringen trening/konkurranse settes i Livelox, ikke i API-objektet.
+- Autorisering: OAuth2 med scope `events.import`. Livelox gir ikke klubber
+  API-nøkkel, men regner et verktøy som dette som event management software og
+  setter opp en klient-id mot en oppgitt redirect-URI. Avtales med
+  info@livelox.com; ingen selvbetjent registrering. Utløpt token gir HTTP 403,
+  og da fornyes det med refresh-tokenet.
+- Kartet kan lastes opp som `.ocd` (eller `.oom`, `.kmz`) – de bærer
+  georefereringen selv, og da skal `georeference` utelates. Rasterkart
+  (PNG/TIFF/JPEG/GIF) trenger world-fil eller koordinatmapping.
+- Klassifiseringen settes med `level`: `club` og `local` blir trening i
+  Livelox, de øvrige blir konkurranse. Det er verdt å få riktig – treninger er
+  unntatt forsinket tilgang til ruter.
 - Dokumentasjon: https://www.livelox.com/Documentation/Api/EventIntegration
 
 ## Fallgruver
@@ -89,6 +102,8 @@ innlogget Livelox-bruker fullfører importen med ett klikk.
   kodene `S` og `F` når Purple Pen ikke har egne koder.
 - **PDF-kart i Purple Pen** kan ikke georefereres. Peker prosjektet på en PDF,
   oppgi OCAD-kartet med `--ocd`, eller sett opp arrangementet manuelt.
+- Et token gjelder brukeren som godkjente det. Importen havner på den
+  Livelox-kontoen løypeleggeren logget inn med, ikke på klubben som sådan.
 - Uten løypetrykk (SVG/PDF) tegner Livelox strekene selv ut fra postposisjonene –
   uten kuttede ringer og forbudte områder.
 - Poengløp (`kind="score"` i Purple Pen) må settes til *Rogaining* på klassene i
