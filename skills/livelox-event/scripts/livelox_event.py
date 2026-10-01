@@ -171,22 +171,77 @@ def request(method, url, auth, data=None, ctype='application/json', retry=True):
         return e.code, e.read().decode('utf-8', 'replace')
 
 
-def post(ev, files, auth):
-    status, res = request('POST', API + '/importableEvents', auth,
-                          json.dumps(ev).encode('utf-8'))
-    if status != 200:
-        sys.exit('POST /importableEvents feilet (%s): %s' % (status, res))
-    eid = res['id']
+def upload(eid, files, auth):
     for name, path in files.items():
         with open(path, 'rb') as f:
-            s, r = request('POST', '%s/importableEvents/%s/files/%s'
-                           % (API, eid, urllib.parse.quote(name)), auth,
-                           f.read(), 'application/octet-stream')
-        print('  last opp %-34s %s  (%.1f MB)' % (name, s, os.path.getsize(path)/1e6))
-    s, r = request('GET', '%s/importableEvents/%s/validationErrors' % (API, eid), auth)
-    print('Validering:', json.dumps(r, ensure_ascii=False))
-    print('\nÅpne denne i nettleseren og fullfør importen:\n  %s' % res.get('liveloxImportEventUrl'))
-    return res
+            data = f.read()
+        st, r = request('POST', '%s/importableEvents/%s/files/%s'
+                        % (API, eid, urllib.parse.quote(name)), auth,
+                        data, 'application/octet-stream')
+        if st not in (200, 201):
+            sys.exit('Opplasting av %s feilet (%s): %s' % (name, st, r))
+        print('  lastet opp %-32s %.1f MB' % (name, len(data)/1e6))
+
+
+def validate(eid, auth):
+    """Stopper før brukeren sendes videre dersom Livelox har innvendinger."""
+    st, r = request('GET', '%s/importableEvents/%s/validationErrors' % (API, eid), auth)
+    if st != 200 or not isinstance(r, dict):
+        print('Kunne ikke validere (%s) - fortsetter.' % st)
+        return
+    for w in r.get('warnings') or []:
+        print('  advarsel: %s' % w)
+    errors = r.get('errors') or []
+    if errors:
+        print('\nLivelox godtar ikke arrangementet:')
+        for e in errors:
+            print('  - %s' % e)
+        sys.exit('Rett opp dette og kjør på nytt.')
+
+
+def send(ev, files, auth):
+    """Oppretter arrangementet, eller oppdaterer det som allerede finnes.
+
+    Et arrangement som er importert i Livelox fra før oppdateres helt uten
+    omvei om nettleseren; det er bare første gang noen må klikke.
+    """
+    eid = ev['id']
+    st, existing = request('GET', '%s/importableEvents/%s?includeImportedEvent=true'
+                           % (API, urllib.parse.quote(str(eid))), auth)
+    known = st == 200 and isinstance(existing, dict)
+    imported = bool(known and existing.get('importedEvent'))
+
+    if known:
+        st, r = request('PUT', '%s/importableEvents/%s' % (API, urllib.parse.quote(str(eid))),
+                        auth, json.dumps(ev).encode('utf-8'))
+        if st != 200:
+            sys.exit('Oppdatering feilet (%s): %s' % (st, r))
+        print('Oppdaterer arrangementet som alt ligger i Livelox.')
+    else:
+        st, r = request('POST', API + '/importableEvents', auth,
+                        json.dumps(ev).encode('utf-8'))
+        if st != 200:
+            sys.exit('POST /importableEvents feilet (%s): %s' % (st, r))
+        eid = r.get('id', eid)
+        existing = r
+
+    upload(eid, files, auth)
+    validate(eid, auth)
+
+    if imported:
+        st, r = request('PUT', '%s/importableEvents/%s/import'
+                        % (API, urllib.parse.quote(str(eid))), auth, b'')
+        if st != 200:
+            sys.exit('Import av endringene feilet (%s): %s' % (st, r))
+        print('\nLøypene er oppdatert i Livelox:\n  %s'
+              % (r.get('liveloxShowEventUrl') or ''))
+        print('Navn og tidspunkt endres ikke denne veien - det må gjøres i Livelox.')
+        return r
+
+    url = (existing.get('liveloxImportEventUrl')
+           or (existing.get('link') or {}).get('liveloxImportEventUrl'))
+    print('\nÅpne denne i nettleseren og fullfør importen:\n  %s' % (url or '(ingen URL i svaret)'))
+    return existing
 
 
 def main():
@@ -233,7 +288,7 @@ def main():
             auth = ('Bearer', livelox_auth.access_token(interactive=interactive))
         if not auth[1]:
             sys.exit('Ingen tilgang til Livelox. Kjør livelox_auth.py for å logge inn.')
-        post(ev, files, auth)
+        send(ev, files, auth)
 
 
 if __name__ == '__main__':

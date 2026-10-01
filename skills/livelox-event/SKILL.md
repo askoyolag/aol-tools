@@ -66,6 +66,15 @@ til disk så den kan kontrolleres. Med `--post` opprettes den importerbare
 hendelsen, filene lastes opp, valideringen kjøres, og skriptet skriver ut
 URL-en der løypeleggeren fullfører importen med ett klikk.
 
+Kjører du samme løypefil på nytt, oppdateres arrangementet i stedet for at det
+lages et nytt – id-en utledes av filnavnet, og skriptet sjekker først om Livelox
+kjenner den fra før. Er importen alt fullført, går oppdateringen helt uten
+nettleser (`PUT /importableEvents/{id}/import`). Navn og tidspunkt kan ikke
+endres den veien; det må gjøres i Livelox.
+
+Finner valideringen feil, stopper skriptet og skriver dem ut i stedet for å
+sende løypeleggeren videre til en import som uansett ville blitt avvist.
+
 `scripts/livelox_auth.py` håndterer innloggingen (OAuth2 Authorization Code med
 PKCE). Kjør den én gang per maskin: nettleseren åpnes, løypeleggeren logger inn
 i Livelox og godkjenner. Tokenet lagres i `~/.config/livelox/tokens.json` og

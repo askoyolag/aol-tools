@@ -98,13 +98,16 @@ class TestOpplasting(Fixtures):
         self.url, self.state, self.stop = mock_livelox.start()
         self.addCleanup(self.stop)
 
-    def test_full_import(self):
-        r = subprocess.run(
+    def post(self, *args):
+        return subprocess.run(
             [sys.executable, os.path.join(SCRIPTS, 'livelox_event.py'), self.ppen,
              '--start', '2026-05-12T18:00', '--end', '2026-05-12T21:00',
-             '--out', self.dir, '--post'],
+             '--out', self.dir, '--post', *args],
             capture_output=True, text=True,
             env=dict(os.environ, LIVELOX_API=self.url, LIVELOX_API_KEY='test'))
+
+    def test_full_import(self):
+        r = self.post()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(self.state.events), 1)
         eid, ev = next(iter(self.state.events.items()))
@@ -113,6 +116,31 @@ class TestOpplasting(Fixtures):
         self.assertGreater(self.state.files[(eid, 'testkart.ocd')], 0)
         self.assertEqual(self.state.validated, [eid])
         self.assertIn('ImportEvent?importableEventIdentifier=' + eid, r.stdout)
+
+    def test_andre_gang_oppdaterer(self):
+        """Samme løypefil to ganger skal ikke lage to arrangementer."""
+        self.assertEqual(self.post().returncode, 0)
+        eid, = list(self.state.events)
+        r = self.post()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.state.events), 1)
+        self.assertIn('Oppdaterer arrangementet', r.stdout)
+
+    def test_oppdatering_etter_import_gaar_uten_nettleser(self):
+        self.assertEqual(self.post().returncode, 0)
+        eid, = list(self.state.events)
+        self.state.imported.add(eid)                 # noen har fullført importen
+        r = self.post()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.state.reimports, [eid])
+        self.assertIn('oppdatert i Livelox', r.stdout)
+        self.assertNotIn('Åpne denne i nettleseren', r.stdout)
+
+    def test_valideringsfeil_stopper(self):
+        r = self.post('--no-map')                    # mocken krever kart
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('The event must have a map.', r.stdout)
+        self.assertNotIn('Åpne denne i nettleseren', r.stdout)
 
     def test_uten_tilgang(self):
         r = subprocess.run(

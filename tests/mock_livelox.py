@@ -12,6 +12,8 @@ class State:
         self.events = {}        # id -> importable event object
         self.files = {}         # (id, filnavn) -> antall bytes
         self.validated = []
+        self.imported = set()   # id-er som er fullført i Livelox
+        self.reimports = []     # oppdateringer etter fullført import
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -28,27 +30,67 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _auth_ok(self):
         return bool(self.headers.get('ApiKey') or self.headers.get('Authorization'))
 
+    def _body(self):
+        return self.rfile.read(int(self.headers.get('Content-Length', 0)))
+
     def do_POST(self):
         if not self._auth_ok():
             return self._send(403, {'error': 'no credentials'})
-        n = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(n)
+        body = self._body()
         parts = self.path.strip('/').split('/')
         if parts == ['importableEvents']:
             ev = json.loads(body)
-            eid = 'test-' + str(len(self.state.events) + 1)
+            # Livelox gjenbruker id-en appen oppgir, ellers lager den en ny
+            eid = str(ev.get('id') or 'test-' + str(len(self.state.events) + 1))
             self.state.events[eid] = ev
             return self._send(200, {
                 'id': eid,
                 'liveloxImportEventUrl':
                     'https://www.livelox.com/Admin/Events/ImportEvent?importableEventIdentifier=' + eid})
         if len(parts) == 4 and parts[0] == 'importableEvents' and parts[2] == 'files':
+            if parts[1] not in self.state.events:
+                return self._send(404, {'error': 'unknown event'})
             from urllib.parse import unquote
             self.state.files[(parts[1], unquote(parts[3]))] = len(body)
             return self._send(201, {})
         self._send(404, {'error': self.path})
 
+    def do_PUT(self):
+        if not self._auth_ok():
+            return self._send(403, {'error': 'no credentials'})
+        body = self._body()
+        parts = self.path.strip('/').split('/')
+        if len(parts) == 2 and parts[0] == 'importableEvents':
+            if parts[1] not in self.state.events:
+                return self._send(404, {'error': 'unknown event'})
+            self.state.events[parts[1]] = json.loads(body)
+            return self._send(200, {'id': parts[1]})
+        if len(parts) == 3 and parts[0] == 'importableEvents' and parts[2] == 'import':
+            if parts[1] not in self.state.imported:
+                return self._send(404, {'error': 'not imported yet'})
+            self.state.reimports.append(parts[1])
+            return self._send(200, {
+                'id': parts[1],
+                'liveloxShowEventUrl': 'https://www.livelox.com/Events/Show/4242',
+                'liveloxEditEventUrl': 'https://www.livelox.com/Admin/Events/Overview/4242'})
+        self._send(404, {'error': self.path})
+
     def do_GET(self):
+        from urllib.parse import urlparse, unquote
+        path = urlparse(self.path).path
+        parts = path.strip('/').split('/')
+        if len(parts) == 2 and parts[0] == 'importableEvents':
+            eid = unquote(parts[1])
+            if eid not in self.state.events:
+                return self._send(404, {'error': 'unknown event'})
+            out = dict(self.state.events[eid])
+            out['link'] = {'id': eid,
+                           'liveloxImportEventUrl':
+                               'https://www.livelox.com/Admin/Events/ImportEvent'
+                               '?importableEventIdentifier=' + eid}
+            if eid in self.state.imported:
+                out['importedEvent'] = {'id': 4242, 'name': out.get('name')}
+            return self._send(200, out)
         parts = self.path.strip('/').split('/')
         if len(parts) == 3 and parts[2] == 'validationErrors':
             self.state.validated.append(parts[1])
@@ -57,6 +99,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for c in ev.get('courses', []):
                 if len(c.get('controls', [])) < 2:
                     errors.append("The course '%s' must have at least two controls." % c.get('name'))
+            if not ev.get('maps'):
+                errors.append('The event must have a map.')
             return self._send(200, {'errors': errors, 'warnings': []})
         self._send(404, {'error': self.path})
 
