@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+.venv/
+tokens.json
+livelox-*.json
+*.ocd
+*.ppen
+!tests/**

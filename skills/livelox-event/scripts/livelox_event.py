@@ -20,7 +20,7 @@ from ppen import PurplePen
 from ocad_geo import Georeference
 import livelox_auth
 
-API = 'https://api.livelox.com'
+API = os.environ.get('LIVELOX_API', 'https://api.livelox.com')
 TYPE_MAP = {'start': 'Start', 'normal': 'Control', 'finish': 'Finish'}
 WORLD_EXT = {'.png': '.pgw', '.tif': '.tfw', '.tiff': '.tfw', '.jpg': '.jgw', '.jpeg': '.jgw', '.gif': '.gfw'}
 
@@ -221,7 +221,12 @@ def main():
 
     if args.post:
         key = os.environ.get('LIVELOX_API_KEY')
-        auth = ('ApiKey', key) if key else ('Bearer', livelox_auth.access_token())
+        if key:
+            auth = ('ApiKey', key)
+        else:
+            # innlogging krever et menneske foran skjermen; ellers feil med en gang
+            interactive = sys.stdin.isatty() and not os.environ.get('LIVELOX_NO_BROWSER')
+            auth = ('Bearer', livelox_auth.access_token(interactive=interactive))
         if not auth[1]:
             sys.exit('Ingen tilgang til Livelox. Kjør livelox_auth.py for å logge inn.')
         post(ev, files, auth)
