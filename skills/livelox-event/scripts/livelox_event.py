@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = ["tzdata; sys_platform == 'win32'"]
 # ///
 """Build (and optionally upload) a Livelox importable event from a Purple Pen file.
 
@@ -21,7 +21,8 @@ import argparse, datetime as dt, json, os, re, sys, urllib.error, urllib.parse, 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ppen import PurplePen
-from ocad_geo import Georeference
+from ocad_geo import Georeference, utm_to_wgs84
+import iof_xml
 import livelox_auth
 
 API = os.environ.get('LIVELOX_API', 'https://api.livelox.com')
@@ -34,10 +35,44 @@ def slug(text):
     return re.sub(r'-+', '-', re.sub(r'[^a-z0-9]+', '-', s)).strip('-')[:64]
 
 
+# Normaltid (timer fra UTC) for europeiske soner som følger EUs sommertid.
+# Brukes bare når Python mangler tidssonedatabasen - som på Windows uten
+# pakken tzdata.
+EU_SONER = {'Europe/London': 0, 'Europe/Dublin': 0, 'Europe/Lisbon': 0,
+            'Europe/Oslo': 1, 'Europe/Stockholm': 1, 'Europe/Copenhagen': 1,
+            'Europe/Berlin': 1, 'Europe/Amsterdam': 1, 'Europe/Brussels': 1,
+            'Europe/Paris': 1, 'Europe/Zurich': 1, 'Europe/Vienna': 1,
+            'Europe/Prague': 1, 'Europe/Warsaw': 1, 'Europe/Rome': 1,
+            'Europe/Madrid': 1, 'Europe/Budapest': 1,
+            'Europe/Helsinki': 2, 'Europe/Tallinn': 2, 'Europe/Riga': 2,
+            'Europe/Vilnius': 2}
+
+
+def _siste_sondag(aar, mnd):
+    d = dt.date(aar, mnd + 1, 1) - dt.timedelta(days=1)
+    return d - dt.timedelta(days=(d.weekday() + 1) % 7)
+
+
+def _eu_utc(naive, tz):
+    """Lokal tid -> UTC etter EUs regel: sommertid fra kl. 01 UTC siste søndag
+    i mars til kl. 01 UTC siste søndag i oktober."""
+    std = dt.timedelta(hours=EU_SONER[tz])
+    start = dt.datetime.combine(_siste_sondag(naive.year, 3), dt.time(1))
+    slutt = dt.datetime.combine(_siste_sondag(naive.year, 10), dt.time(1))
+    sommer = start <= naive - std <= slutt
+    return naive - std - (dt.timedelta(hours=1) if sommer else dt.timedelta(0))
+
+
 def utc(local_iso, tz):
     naive = dt.datetime.fromisoformat(local_iso)
-    aware = naive.replace(tzinfo=zoneinfo.ZoneInfo(tz))
-    return aware.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    try:
+        aware = naive.replace(tzinfo=zoneinfo.ZoneInfo(tz))
+        return aware.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    except zoneinfo.ZoneInfoNotFoundError:
+        if tz not in EU_SONER:
+            sys.exit('Python mangler tidssonedata for %s. Installer den med '
+                     '«pip install tzdata», eller kjør skriptet med uv run.' % tz)
+        return _eu_utc(naive, tz).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def find_map_file(ppen, explicit):
@@ -266,7 +301,7 @@ def main():
     ap.add_argument('--world', help='world-fil til kartbildet (.pgw/.tfw); finnes automatisk ved siden av bildet')
     ap.add_argument('--epsg', type=int, help='overstyr koordinatsystemet til kartet')
     ap.add_argument('--id', help='egen id for arrangementet (standard: filnavnet)')
-    ap.add_argument('--out', default='.', help='hvor JSON-fila skrives')
+    ap.add_argument('--out', default='.', help='mappe der JSON- og IOF XML-fila skrives (lages om den mangler)')
     ap.add_argument('--post', action='store_true', help='last opp til Livelox (krever LIVELOX_API_KEY)')
     args = ap.parse_args()
 
@@ -279,10 +314,24 @@ def main():
     else:
         print('Kart:      ingen - forutsetter at kartet alt ligger i Livelox')
 
+    os.makedirs(args.out, exist_ok=True)
     out = os.path.join(args.out, 'livelox-%s.json' % ev['id'])
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(ev, f, ensure_ascii=False, indent=2)
     print('Skrev      %s' % out)
+
+    # IOF XML med ekte koordinater: Livelox' nettside plasserer ikke .ppen selv,
+    # så dette er fila som skal lastes opp under Løyper ved manuelt oppsett.
+    lonlat = {c['code']: utm_to_wgs84(c['projectedPosition']['x'],
+                                      c['projectedPosition']['y'], ev['projectionEpsgCode'])
+              for c in ev['controls']}
+    if all(lonlat.values()):
+        xml = os.path.join(args.out, 'livelox-%s.xml' % ev['id'])
+        with open(xml, 'w', encoding='utf-8') as f:
+            f.write(iof_xml.course_data(ev, lonlat))
+        print('Skrev      %s  (IOF XML 3.0 - last opp denne under Løyper i Livelox)' % xml)
+    else:
+        print('IOF XML:   hoppet over - EPSG:%s er ikke UTM' % ev['projectionEpsgCode'])
 
     if args.post:
         key = os.environ.get('LIVELOX_API_KEY')
@@ -295,6 +344,11 @@ def main():
         if not auth[1]:
             sys.exit('Ingen tilgang til Livelox. Kjør livelox_auth.py for å logge inn.')
         send(ev, files, auth)
+
+    if args.level in ('club', 'local'):
+        print('\nHusk:      publiseringstiden settes i Livelox, ikke via API-et. På treninger\n'
+              '           skal den være når arrangementet starter (første start), ikke når\n'
+              '           siste deltaker starter - se Tilgangsbegrensning.')
 
 
 if __name__ == '__main__':

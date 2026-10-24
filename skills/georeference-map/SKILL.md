@@ -31,6 +31,11 @@ samme vannene. Navn av typen `Vann` og `Tjern` er til å stole på; `Gard` og
 `Navnegard` er det ikke – Kartverkets punkt for en gard ligger gjerne en
 kilometer fra der navnet står på kartet.
 
+**Fortegnet på vinkelen.** Skriptene regner rotasjonen mot klokka, mens OCAD
+vil ha den med klokka. Fram til 24.10.2026 skrev de ut vinkelen med feil
+fortegn; nå skrives OCADs verdi. Vinkler fra før den datoen – blant annet
+2,9° for Fauskanger – skal tastes inn med motsatt fortegn.
+
 Begrensningen er antallet: et kart må ha minst to–tre *vannavn* med god
 avstand mellom seg. Fauskanger har bare to, 424 m fra hverandre, og da blir
 vinkelen usikker med ±16°. Plasseringen blir riktig, vinkelen omtrentlig.

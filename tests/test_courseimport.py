@@ -14,7 +14,9 @@ sys.path.insert(0, SCRIPTS)
 import fixtures                                   # noqa: E402
 import mock_livelox                               # noqa: E402
 from ppen import PurplePen                        # noqa: E402
-from ocad_geo import Georeference                 # noqa: E402
+from ocad_geo import Georeference, utm_to_wgs84   # noqa: E402
+from ocad import OcadFile                         # noqa: E402
+import xml.etree.ElementTree as ET                # noqa: E402
 
 
 class Fixtures(unittest.TestCase):
@@ -51,6 +53,78 @@ class TestGeoreferering(Fixtures):
         self.assertAlmostEqual(y - fixtures.Y0, 0.0, places=3)
 
 
+class TestRotasjon(unittest.TestCase):
+    """Vinkelen i OCAD er positiv med klokka. Feil fortegn ga feil poster i 2026."""
+
+    def kart(self, **kw):
+        d = tempfile.mkdtemp()
+        return fixtures.ocd_map(os.path.join(d, 'kart.ocd'), **kw)
+
+    def test_herdla_mot_fasit(self):
+        g = Georeference(self.kart(**fixtures.HERDLA))
+        for kode, ((x, y), (e, n)) in fixtures.HERDLA_POSTER.items():
+            pe, pn = g.to_projected(x, y)
+            self.assertAlmostEqual(pe, e, delta=0.05, msg='post %s øst' % kode)
+            self.assertAlmostEqual(pn, n, delta=0.05, msg='post %s nord' % kode)
+
+    def test_kvart_omdreining(self):
+        # Kartnord peker øst for gridnord: høyre på papiret er da sør i terrenget.
+        g = Georeference(self.kart(angle=90.0))
+        e, n = g.to_projected(100, 0)                    # 100 mm på 1:10000
+        self.assertAlmostEqual(e - fixtures.X0, 0.0, places=3)
+        self.assertAlmostEqual(n - fixtures.Y0, -1000.0, places=3)
+
+    def test_ocad_files_regner_likt(self):
+        path = self.kart(**fixtures.HERDLA)
+        (x, y), _ = fixtures.HERDLA_POSTER['38']
+        self.assertEqual(OcadFile(path).to_real([(x, y)])[0],
+                         Georeference(path).to_projected(x, y))
+
+
+class TestUtm(unittest.TestCase):
+    def test_herdla_start(self):
+        _, (e, n) = fixtures.HERDLA_POSTER['S']
+        lng, lat = utm_to_wgs84(e, n, 32632)
+        self.assertAlmostEqual(lng, fixtures.HERDLA_START_WGS84[0], places=6)
+        self.assertAlmostEqual(lat, fixtures.HERDLA_START_WGS84[1], places=6)
+
+    def test_sentralmeridian_og_sorlig_halvkule(self):
+        lng, lat = utm_to_wgs84(500000, 6650000, 25832)  # ETRS89 = WGS84 her
+        self.assertAlmostEqual(lng, 9.0, places=9)
+        self.assertAlmostEqual(lat, 59.9873285392, places=8)
+        lng, lat = utm_to_wgs84(400000, 7000000, 32733)
+        self.assertAlmostEqual(lng, 13.9910576381, places=8)
+        self.assertAlmostEqual(lat, -27.1188458263, places=8)
+
+    def test_ikke_utm(self):
+        self.assertIsNone(utm_to_wgs84(100, 100, 3857))
+
+
+class TestTidssone(unittest.TestCase):
+    """Windows-Python har ingen tidssonedatabase uten pakken tzdata."""
+
+    def test_eu_regel_stemmer_med_zoneinfo(self):
+        import datetime as dt, livelox_event as le
+        try:
+            zoneinfo_ok = le.zoneinfo.ZoneInfo('Europe/Oslo')
+        except le.zoneinfo.ZoneInfoNotFoundError:
+            self.skipTest('ingen tidssonedata å sammenligne med')
+        t = dt.datetime(2026, 1, 1)
+        while t.year == 2026:                # hver time et helt år, rundt omstillingene
+            for tz in ('Europe/Oslo', 'Europe/London', 'Europe/Helsinki'):
+                fasit = t.replace(tzinfo=le.zoneinfo.ZoneInfo(tz)).astimezone(dt.timezone.utc)
+                self.assertEqual(le._eu_utc(t, tz), fasit.replace(tzinfo=None), (tz, t))
+            t += dt.timedelta(hours=7)
+        del zoneinfo_ok
+
+    def test_omstilling_2026(self):
+        import datetime as dt, livelox_event as le
+        self.assertEqual(le._eu_utc(dt.datetime(2026, 10, 22, 18), 'Europe/Oslo'),
+                         dt.datetime(2026, 10, 22, 16))       # sommertid
+        self.assertEqual(le._eu_utc(dt.datetime(2026, 11, 5, 18), 'Europe/Oslo'),
+                         dt.datetime(2026, 11, 5, 17))        # normaltid
+
+
 class TestBygging(Fixtures):
     def kjor(self, *args, env=None):
         e = dict(os.environ, **(env or {}))
@@ -75,6 +149,30 @@ class TestBygging(Fixtures):
         self.assertEqual(round(start['projectedPosition']['x']), round(fixtures.X0))
         self.assertEqual(ev['maps'][0]['fileName'], 'testkart.ocd')
         self.assertNotIn('georeference', ev['maps'][0])   # .ocd bærer den selv
+
+    def test_lager_iof_xml(self):
+        r = self.kjor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        ns = {'i': 'http://www.orienteering.org/datastandard/3.0'}
+        root = ET.parse(os.path.join(self.dir, 'livelox-trening.xml')).getroot()
+        self.assertEqual(root.get('iofVersion'), '3.0')
+        ctrl = {c.find('i:Id', ns).text: c for c in root.iter('{%s}Control' % ns['i'])
+                if c.find('i:Id', ns) is not None}
+        self.assertEqual(sorted(ctrl), ['31', '32', 'F', 'S'])
+        pos = ctrl['S'].find('i:Position', ns)
+        lng, lat = utm_to_wgs84(fixtures.X0, fixtures.Y0, fixtures.EPSG)
+        self.assertAlmostEqual(float(pos.get('lng')), lng, places=6)
+        self.assertAlmostEqual(float(pos.get('lat')), lat, places=6)
+        course, = root.iter('{%s}Course' % ns['i'])
+        self.assertEqual(course.find('i:Name', ns).text, 'A')
+        self.assertEqual([cc.find('i:Control', ns).text for cc in course.findall('i:CourseControl', ns)],
+                         ['S', '31', '32', 'F'])
+        self.assertEqual([cc.get('type') for cc in course.findall('i:CourseControl', ns)],
+                         ['Start', 'Control', 'Control', 'Finish'])
+
+    def test_minner_om_publisering_paa_trening(self):
+        r = self.kjor()
+        self.assertIn('første start', r.stdout)
 
     def test_uten_kart(self):
         r = self.kjor('--no-map')

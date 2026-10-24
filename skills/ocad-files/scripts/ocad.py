@@ -120,9 +120,20 @@ class OcadFile:
     # ---------- helpers ----------
     def to_real(self, pts):
         """map mm -> real-world metres (easting, northing)."""
-        s = self.setup
-        f = s['scale'] / 1000.0
-        a = math.radians(s['angle'])
-        ca, sa = math.cos(a), math.sin(a)
-        return [((x * f) * ca - (y * f) * sa + s['x0'],
-                 (x * f) * sa + (y * f) * ca + s['y0']) for x, y in pts]
+        return [paper_to_real(self.setup, x, y) for x, y in pts]
+
+
+def paper_to_real(setup, x_mm, y_mm):
+    """Kartmillimeter -> projiserte meter (øst, nord), med OCADs fortegn.
+
+    Vinkelen `a` i parameterstreng 1039 er positiv *med* klokka: kartet er
+    rotert så mye at kartnord peker `a` grader øst for gridnord. Papirkoordinatene
+    må derfor roteres med -a. Fortegnet ble kontrollert 24.10.2026 på
+    Herdla (a = 6,1°): med -a stemte postene med kartet Livelox leser fra .ocd og
+    med en deltakers GPS-spor; med +a havnet de 100-250 m vestover.
+    """
+    f = setup['scale'] / 1000.0
+    a = math.radians(-setup['angle'])
+    ca, sa = math.cos(a), math.sin(a)
+    return ((x_mm * f) * ca - (y_mm * f) * sa + setup['x0'],
+            (x_mm * f) * sa + (y_mm * f) * ca + setup['y0'])

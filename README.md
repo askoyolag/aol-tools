@@ -27,9 +27,10 @@ laster den ned hvis den mangler. Har du Python fra før, fungerer `python3`
 like godt.
 
 - **CourseImport** (`skills/livelox-event`) – setter opp Livelox-arrangementer
-  fra løypefiler. Leser Purple Pen (`.ppen`) eller OCAD Course Setting,
-  georefererer postene fra kartet og laster opp alt til Livelox' import-API, så
-  løypeleggeren bare fullfører med ett klikk.
+  fra Purple Pen-løyper (`.ppen`). Georefererer postene fra OCAD-kartet, lager
+  en IOF XML-fil med ekte koordinater og laster opp alt til Livelox' import-API,
+  så løypeleggeren bare fullfører med ett klikk. For OCAD Course Setting finnes
+  OCADs egen Livelox-opplasting.
 - **ocad-files** – leser og måler OCAD-kartfiler (`.ocd`) direkte, uten OCAD
   installert: målestokk, georeferering, symboler, farger, trykkramme, blending
   og kartlagt areal.
@@ -52,7 +53,13 @@ uv run skills/livelox-event/scripts/livelox_event.py "Trening mai.ppen" \
 
 Kartet hentes fra fila `.ppen` peker på og sendes som `.ocd`; Livelox leser
 georefereringen fra selve kartfila. Uten `--post` skrives arrangementet til en
-JSON-fil så det kan kontrolleres først. `--level club` (standard) gir
+JSON-fil så det kan kontrolleres først, sammen med en IOF XML-fil (`.xml`) med
+ekte koordinater. Settes arrangementet opp for hånd i Livelox, er det XML-fila
+som skal lastes opp under Løyper – Livelox plasserer ikke `.ppen` selv.
+
+Publiseringstiden kan ikke settes via API-et. På treninger skal den være når
+arrangementet starter, så alle kan se veivalgene med én gang – sett den under
+Tilgangsbegrensning i Livelox etter importen. `--level club` (standard) gir
 klassifiseringen trening i Livelox, som blant annet betyr at alle ser
 veivalgene med én gang.
 

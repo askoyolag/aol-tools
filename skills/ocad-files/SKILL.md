@@ -106,10 +106,16 @@ Full transform to real-world coordinates:
 
 ```python
 f = scale / 1000.0
-ca, sa = cos(radians(angle)), sin(radians(angle))
+ca, sa = cos(radians(-angle)), sin(radians(-angle))   # note the minus
 E = (x_mm*f)*ca - (y_mm*f)*sa + x0
 N = (x_mm*f)*sa + (y_mm*f)*ca + y0
 ```
+
+OCAD's angle is positive **clockwise** (map north points `angle` degrees east of
+grid north), so paper coordinates are rotated by `-angle`. Getting the sign
+wrong is invisible on unrotated maps and moves features hundreds of metres on
+rotated ones – on Herdla (6.1°) control points ended up 100–250 m west. Use
+`paper_to_real()` in `scripts/ocad.py` rather than writing the formula again.
 
 ## The three areas people mean by "the area of the map"
 

@@ -10,14 +10,14 @@ import struct
 SCALE, EPSG, X0, Y0, ANGLE = 10000.0, 32632, 280000.0, 6700000.0, 0.0
 
 
-def ocd_map(path):
+def ocd_map(path, scale=SCALE, x0=X0, y0=Y0, angle=ANGLE, epsg=EPSG):
     """Skriver en .ocd med bare det parameterstrengen 1039 trenger.
 
     Filen har ingen symboler eller objekter - skriptene leser kun
     georefereringen fra den.
     """
     setup = ('\tm%.6f\tg50.0000\tr1\tx%.0f\ty%.0f\ta%.8f\td250.00\ti2032\te%d'
-             % (SCALE, X0, Y0, ANGLE, EPSG)).encode('cp1252') + b'\x00'
+             % (scale, x0, y0, angle, epsg)).encode('cp1252') + b'\x00'
     header = bytearray(48)
     struct.pack_into('<hBBhBBII', header, 0, 0x0CAD, 0, 0, 2018, 0, 0, 0, 0)
     str_idx = len(header)                      # strengindeksblokk rett etter headeren
@@ -65,3 +65,16 @@ def ppen_course(path, mapname='testkart.ocd'):
 # altså 100 + 100 + 100 = 300 m strekklengde, og start i (280000, 6700000).
 EXPECTED_LENGTH = 300
 EXPECTED_START = (X0, Y0)
+
+
+# Fasit fra virkeligheten: Herdla-kartet (1:4000, origo 278000/6721000, vinkel
+# 6,1°) og to poster fra treningen 22.10.2026. Posisjonene er kontrollert mot
+# kartet Livelox leser fra .ocd og mot en deltakers GPS-spor, der Livelox fant
+# alle postene automatisk. Med feil fortegn på vinkelen havner de 100-250 m
+# vestover - det er feilen denne fasiten skal fange.
+HERDLA = dict(scale=4000.0, x0=278000.0, y0=6721000.0, angle=6.1, epsg=32632)
+HERDLA_POSTER = {                 # papir-mm i .ppen -> UTM 32N, meter
+    'S': ((8.30557, 299.856567), (278160.49, 6722189.10)),
+    '38': ((-82.335144, 356.4899), (277824.05, 6722452.88)),
+}
+HERDLA_START_WGS84 = (4.9507069, 60.5741620)    # (lengdegrad, breddegrad)

@@ -270,7 +270,8 @@ def main():
     print('   Koordinatsystem  UTM %dN (EPSG:%d)' % (zone, epsg))
     print('   Øst              %.1f' % tx)
     print('   Nord             %.1f' % ty)
-    print('   Vinkel           %.3f°' % math.degrees(th))
+    # th er rotasjonen mot klokka fra kart til terreng; OCADs vinkel er med klokka
+    print('   Vinkel           %.3f°' % -math.degrees(th))
     print('\nKontroller alltid resultatet mot flyfoto før kartet brukes.')
 
 
