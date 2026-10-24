@@ -100,6 +100,31 @@ class TestUtm(unittest.TestCase):
         self.assertIsNone(utm_to_wgs84(100, 100, 3857))
 
 
+class TestTidssone(unittest.TestCase):
+    """Windows-Python har ingen tidssonedatabase uten pakken tzdata."""
+
+    def test_eu_regel_stemmer_med_zoneinfo(self):
+        import datetime as dt, livelox_event as le
+        try:
+            zoneinfo_ok = le.zoneinfo.ZoneInfo('Europe/Oslo')
+        except le.zoneinfo.ZoneInfoNotFoundError:
+            self.skipTest('ingen tidssonedata å sammenligne med')
+        t = dt.datetime(2026, 1, 1)
+        while t.year == 2026:                # hver time et helt år, rundt omstillingene
+            for tz in ('Europe/Oslo', 'Europe/London', 'Europe/Helsinki'):
+                fasit = t.replace(tzinfo=le.zoneinfo.ZoneInfo(tz)).astimezone(dt.timezone.utc)
+                self.assertEqual(le._eu_utc(t, tz), fasit.replace(tzinfo=None), (tz, t))
+            t += dt.timedelta(hours=7)
+        del zoneinfo_ok
+
+    def test_omstilling_2026(self):
+        import datetime as dt, livelox_event as le
+        self.assertEqual(le._eu_utc(dt.datetime(2026, 10, 22, 18), 'Europe/Oslo'),
+                         dt.datetime(2026, 10, 22, 16))       # sommertid
+        self.assertEqual(le._eu_utc(dt.datetime(2026, 11, 5, 18), 'Europe/Oslo'),
+                         dt.datetime(2026, 11, 5, 17))        # normaltid
+
+
 class TestBygging(Fixtures):
     def kjor(self, *args, env=None):
         e = dict(os.environ, **(env or {}))

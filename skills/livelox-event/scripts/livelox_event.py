@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = ["tzdata; sys_platform == 'win32'"]
 # ///
 """Build (and optionally upload) a Livelox importable event from a Purple Pen file.
 
@@ -35,10 +35,44 @@ def slug(text):
     return re.sub(r'-+', '-', re.sub(r'[^a-z0-9]+', '-', s)).strip('-')[:64]
 
 
+# Normaltid (timer fra UTC) for europeiske soner som følger EUs sommertid.
+# Brukes bare når Python mangler tidssonedatabasen - som på Windows uten
+# pakken tzdata.
+EU_SONER = {'Europe/London': 0, 'Europe/Dublin': 0, 'Europe/Lisbon': 0,
+            'Europe/Oslo': 1, 'Europe/Stockholm': 1, 'Europe/Copenhagen': 1,
+            'Europe/Berlin': 1, 'Europe/Amsterdam': 1, 'Europe/Brussels': 1,
+            'Europe/Paris': 1, 'Europe/Zurich': 1, 'Europe/Vienna': 1,
+            'Europe/Prague': 1, 'Europe/Warsaw': 1, 'Europe/Rome': 1,
+            'Europe/Madrid': 1, 'Europe/Budapest': 1,
+            'Europe/Helsinki': 2, 'Europe/Tallinn': 2, 'Europe/Riga': 2,
+            'Europe/Vilnius': 2}
+
+
+def _siste_sondag(aar, mnd):
+    d = dt.date(aar, mnd + 1, 1) - dt.timedelta(days=1)
+    return d - dt.timedelta(days=(d.weekday() + 1) % 7)
+
+
+def _eu_utc(naive, tz):
+    """Lokal tid -> UTC etter EUs regel: sommertid fra kl. 01 UTC siste søndag
+    i mars til kl. 01 UTC siste søndag i oktober."""
+    std = dt.timedelta(hours=EU_SONER[tz])
+    start = dt.datetime.combine(_siste_sondag(naive.year, 3), dt.time(1))
+    slutt = dt.datetime.combine(_siste_sondag(naive.year, 10), dt.time(1))
+    sommer = start <= naive - std <= slutt
+    return naive - std - (dt.timedelta(hours=1) if sommer else dt.timedelta(0))
+
+
 def utc(local_iso, tz):
     naive = dt.datetime.fromisoformat(local_iso)
-    aware = naive.replace(tzinfo=zoneinfo.ZoneInfo(tz))
-    return aware.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    try:
+        aware = naive.replace(tzinfo=zoneinfo.ZoneInfo(tz))
+        return aware.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    except zoneinfo.ZoneInfoNotFoundError:
+        if tz not in EU_SONER:
+            sys.exit('Python mangler tidssonedata for %s. Installer den med '
+                     '«pip install tzdata», eller kjør skriptet med uv run.' % tz)
+        return _eu_utc(naive, tz).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def find_map_file(ppen, explicit):
