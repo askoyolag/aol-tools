@@ -45,9 +45,7 @@ def is_white(sym, syms, cnames):
     return any(WHITE_RE.search(cnames.get(c, '')) for c in info['colors'])
 
 def to_real(o, pts):
-    s = o.setup; f = s['scale']/1000.0
-    a = math.radians(s['angle']); ca, sa = math.cos(a), math.sin(a)
-    return [((x*f)*ca - (y*f)*sa + s['x0'], (x*f)*sa + (y*f)*ca + s['y0']) for x, y in pts]
+    return o.to_real(pts)
 
 def find_frame(o):
     """-> (corners in real-world m, kilde)"""

@@ -21,7 +21,8 @@ import argparse, datetime as dt, json, os, re, sys, urllib.error, urllib.parse, 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ppen import PurplePen
-from ocad_geo import Georeference
+from ocad_geo import Georeference, utm_to_wgs84
+import iof_xml
 import livelox_auth
 
 API = os.environ.get('LIVELOX_API', 'https://api.livelox.com')
@@ -266,7 +267,7 @@ def main():
     ap.add_argument('--world', help='world-fil til kartbildet (.pgw/.tfw); finnes automatisk ved siden av bildet')
     ap.add_argument('--epsg', type=int, help='overstyr koordinatsystemet til kartet')
     ap.add_argument('--id', help='egen id for arrangementet (standard: filnavnet)')
-    ap.add_argument('--out', default='.', help='hvor JSON-fila skrives')
+    ap.add_argument('--out', default='.', help='mappe der JSON- og IOF XML-fila skrives (lages om den mangler)')
     ap.add_argument('--post', action='store_true', help='last opp til Livelox (krever LIVELOX_API_KEY)')
     args = ap.parse_args()
 
@@ -279,10 +280,24 @@ def main():
     else:
         print('Kart:      ingen - forutsetter at kartet alt ligger i Livelox')
 
+    os.makedirs(args.out, exist_ok=True)
     out = os.path.join(args.out, 'livelox-%s.json' % ev['id'])
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(ev, f, ensure_ascii=False, indent=2)
     print('Skrev      %s' % out)
+
+    # IOF XML med ekte koordinater: Livelox' nettside plasserer ikke .ppen selv,
+    # så dette er fila som skal lastes opp under Løyper ved manuelt oppsett.
+    lonlat = {c['code']: utm_to_wgs84(c['projectedPosition']['x'],
+                                      c['projectedPosition']['y'], ev['projectionEpsgCode'])
+              for c in ev['controls']}
+    if all(lonlat.values()):
+        xml = os.path.join(args.out, 'livelox-%s.xml' % ev['id'])
+        with open(xml, 'w', encoding='utf-8') as f:
+            f.write(iof_xml.course_data(ev, lonlat))
+        print('Skrev      %s  (IOF XML 3.0 - last opp denne under Løyper i Livelox)' % xml)
+    else:
+        print('IOF XML:   hoppet over - EPSG:%s er ikke UTM' % ev['projectionEpsgCode'])
 
     if args.post:
         key = os.environ.get('LIVELOX_API_KEY')
@@ -295,6 +310,11 @@ def main():
         if not auth[1]:
             sys.exit('Ingen tilgang til Livelox. Kjør livelox_auth.py for å logge inn.')
         send(ev, files, auth)
+
+    if args.level in ('club', 'local'):
+        print('\nHusk:      publiseringstiden settes i Livelox, ikke via API-et. På treninger\n'
+              '           skal den være når arrangementet starter (første start), ikke når\n'
+              '           siste deltaker starter - se Tilgangsbegrensning.')
 
 
 if __name__ == '__main__':

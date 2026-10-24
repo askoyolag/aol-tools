@@ -26,17 +26,28 @@ Livelox leser `.ppen` direkte. Arrangementet opprettes fritt i Livelox
 ## Manuell oppskrift for treningsløp
 
 1. **Opprett arrangementet** i Livelox: navn, start- og sluttid (sett starttid til
-   første start), arrangørklubb. Klassifiser det som **trening**, ikke konkurranse –
+   første start), arrangørklubb. AOL bruker navneformen «Trening DD.MM.ÅÅÅÅ».
+   Livelox setter klokkeslett feil om du skriver i et felt som alt har en
+   verdi – kontroller start og slutt før du lagrer. Klassifiser det som **trening**, ikke konkurranse –
    treninger er unntatt forsinket tilgang til ruter, så alle ser veivalgene med én gang.
 2. **Kart:** last opp kartfila. Livelox leser OCAD- (`.ocd`) og Open Orienteering
    Mapper-filer, i tillegg til PNG/TIFF. Kartet må være georeferert; er det ikke det,
    plasseres det manuelt mot satellittbilde. Kartet skal være uten løyper og uten
    ramme, tittel og logoer.
-3. **Løyper:** last opp `.ppen`-fila under `Courses`. Kontroller fanene *Courses*,
-   *Controls* og *Preview* før du lagrer.
+3. **Løyper:** last opp **IOF XML-fila** som `livelox_event.py` lager
+   (`livelox-<id>.xml`), ikke `.ppen`-fila. Livelox' nettside georefererer ikke
+   Purple Pen: en `.ppen` havner i papirkoordinater og må dras på plass post for
+   post, mens XML-fila har ekte koordinater og havner riktig med én gang. Meldes
+   det at poster ligger utenfor kartet, er noe galt med georefereringen – ikke
+   dra dem på plass, finn feilen. Kontroller fanene *Løyper*, *Poster* og
+   *Forhåndsvisning* før du lagrer.
 4. **Klasser:** svar ja når Livelox tilbyr å lage én klasse per løype. Hold deg på
    maks 10 klasser – det er kravet for at et klubbabonnement skal dekke treningen.
-5. **Publiseringstid:** sett den til etter siste start.
+5. **Publiseringstid:** på treninger skal den være **når arrangementet starter**
+   (første start), ikke når siste deltaker starter, som er Livelox' standardvalg.
+   Det står under *Tidspunkt for publisering* når arrangementet opprettes, og
+   under *Tilgangsbegrensning* etterpå. Løp med påmelding og startliste er
+   annerledes – der skal ingen se løypene før siste start.
 6. Del lenken i Spond. Deltakerne laster opp spor selv – Livelox-appen, eller
    GPX/Garmin/Suunto/Polar-kobling i etterkant – og velger riktig klasse.
 
@@ -48,7 +59,16 @@ kartets papirkoordinatsystem, samme system som OCAD bruker.
 
 `scripts/ocad_geo.py` henter georefereringen fra OCAD-kartet (parameterstreng
 1039: målestokk, vinkel, origo, EPSG-kode) og regner om millimeter til projiserte
-koordinater. Bruker parseren i `ocad-files`-skillen.
+koordinater, og videre til lengde- og breddegrad for UTM-systemene. Bruker
+parseren i `ocad-files`-skillen. **OCADs vinkel er positiv med klokka**, så
+papirkoordinatene roteres med `-vinkel`. Fram til 24.10.2026 var fortegnet feil,
+og postene på roterte kart havnet langt unna (100–250 m på Herdla). Testen
+`TestRotasjon` holder fast ved fasiten fra Herdla.
+
+`scripts/iof_xml.py` skriver løypene som IOF XML 3.0 (`CourseData`) med
+`<Position lng lat>` for hver post. `livelox_event.py` lager fila automatisk
+ved siden av JSON-fila; det er den som lastes opp ved manuelt oppsett i Livelox,
+og den kan leses av andre programmer som forstår IOF XML.
 
 `scripts/livelox_event.py` setter sammen et *importable event object* slik
 Livelox' integrasjons-API vil ha det, og laster opp OCAD-kartet sammen med
@@ -62,7 +82,8 @@ python3 livelox_event.py "Trening mai 2026.ppen" \
 
 Kartet hentes fra fila `.ppen` peker på; `--map` overstyrer, `--no-map` dropper
 opplastingen når kartet alt ligger i Livelox. Uten `--post` skrives JSON-fila
-til disk så den kan kontrolleres. Med `--post` opprettes den importerbare
+og IOF XML-fila til disk (i `--out`, som lages om den mangler) så de kan
+kontrolleres eller brukes til manuelt oppsett. Med `--post` opprettes den importerbare
 hendelsen, filene lastes opp, valideringen kjøres, og skriptet skriver ut
 URL-en der løypeleggeren fullfører importen med ett klikk.
 
@@ -74,6 +95,10 @@ endres den veien; det må gjøres i Livelox.
 
 Finner valideringen feil, stopper skriptet og skriver dem ut i stedet for å
 sende løypeleggeren videre til en import som uansett ville blitt avvist.
+
+Publiseringstiden kan ikke settes via API-et – det importerbare objektet har
+ikke noe felt for den. Etter importen må den settes i Livelox, og skriptet
+minner om det på treninger (`--level club`/`local`).
 
 `scripts/livelox_auth.py` håndterer innloggingen (OAuth2 Authorization Code med
 PKCE). Kjør den én gang per maskin: nettleseren åpnes, løypeleggeren logger inn
@@ -103,6 +128,12 @@ settes med `LIVELOX_CLIENT_ID` og `LIVELOX_REDIRECT_URI`.
 
 ## Fallgruver
 
+- **Kontroller posisjonene, ikke bare at fila bygger.** Livelox' melding om
+  poster utenfor kartet, eller en deltakers GPS-spor som ikke treffer postene, er
+  tegn på feil georeferering.
+- **OCAD Course Setting:** dette verktøyet leser ikke løyper fra `.ocd`. Bruk
+  OCADs egen `Upload to Livelox`, eller eksporter IOF XML 3.0 fra OCAD – den er
+  georeferert når kartet er det.
 - **Ugeoreferert kart** gir ingen posisjoner. Sjekk `realworld`-flagget og EPSG-koden
   i OCAD-oppsettet før du lager JSON – skriptet stopper ellers.
 - Purple Pen-filer peker på kartet med absolutt Windows-sti. Skriptet leter også
