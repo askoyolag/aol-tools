@@ -9,10 +9,11 @@ Reads a .ppen course file plus the georeferencing of its OCAD background map,
 and produces the `importable event object` that the Livelox event integration
 API expects (https://www.livelox.com/Documentation/Api/EventIntegration).
 
-Without an API key it writes the JSON to disk so it can be inspected; with
-LIVELOX_API_KEY set and --post it creates the importable event, uploads the
-files, runs the validation endpoint and prints the URL where a logged-in
-Livelox user finishes the import with one click.
+Without --post it writes the JSON and an IOF XML file to disk, so the courses
+can be checked - or uploaded by hand in Livelox. With --post it logs in
+(livelox_auth.py), creates the importable event, uploads the files, runs the
+validation endpoint and prints the URL where the course setter finishes the
+import with one click.
 
   python3 livelox_event.py trening.ppen --start 2026-05-12T18:00 \
       --end 2026-05-12T21:00 --name "Tirsdagstrening" --club "Askøy OL"
@@ -212,6 +213,18 @@ def request(method, url, auth, data=None, ctype='application/json', retry=True):
         return e.code, e.read().decode('utf-8', 'replace')
 
 
+def fail(what, status, body):
+    """Avslutter med en melding som skiller manglende tilgang fra andre feil."""
+    if status == 403:
+        sys.exit('%s: Livelox svarte 403 Forbidden.\n'
+                 'Tokenet er gyldig og har scope events.import, så dette er ikke\n'
+                 'en utløpt innlogging: klienten eller kontoen mangler tilgang til\n'
+                 'importerbare arrangementer, og det må Livelox slå på.\n'
+                 'Inntil da: kjør uten --post og last opp IOF XML-fila manuelt\n'
+                 'under Løyper i Livelox.' % what)
+    sys.exit('%s feilet (%s): %s' % (what, status, body))
+
+
 def upload(eid, files, auth):
     for name, path in files.items():
         with open(path, 'rb') as f:
@@ -220,7 +233,7 @@ def upload(eid, files, auth):
                         % (API, eid, urllib.parse.quote(name)), auth,
                         data, 'application/octet-stream')
         if st not in (200, 201):
-            sys.exit('Opplasting av %s feilet (%s): %s' % (name, st, r))
+            fail('Opplasting av %s' % name, st, r)
         print('  lastet opp %-32s %.1f MB' % (name, len(data)/1e6))
 
 
@@ -256,13 +269,13 @@ def send(ev, files, auth):
         st, r = request('PUT', '%s/importableEvents/%s' % (API, urllib.parse.quote(str(eid))),
                         auth, json.dumps(ev).encode('utf-8'))
         if st != 200:
-            sys.exit('Oppdatering feilet (%s): %s' % (st, r))
+            fail('Oppdatering av arrangementet', st, r)
         print('Oppdaterer arrangementet som alt ligger i Livelox.')
     else:
         st, r = request('POST', API + '/importableEvents', auth,
                         json.dumps(ev).encode('utf-8'))
         if st != 200:
-            sys.exit('POST /importableEvents feilet (%s): %s' % (st, r))
+            fail('Oppretting av arrangementet', st, r)
         eid = r.get('id', eid)
         existing = r
 
@@ -273,7 +286,7 @@ def send(ev, files, auth):
         st, r = request('PUT', '%s/importableEvents/%s/import'
                         % (API, urllib.parse.quote(str(eid))), auth, b'')
         if st != 200:
-            sys.exit('Import av endringene feilet (%s): %s' % (st, r))
+            fail('Import av endringene', st, r)
         print('\nLøypene er oppdatert i Livelox:\n  %s'
               % (r.get('liveloxShowEventUrl') or ''))
         print('Navn og tidspunkt endres ikke denne veien - det må gjøres i Livelox.')
@@ -302,7 +315,8 @@ def main():
     ap.add_argument('--epsg', type=int, help='overstyr koordinatsystemet til kartet')
     ap.add_argument('--id', help='egen id for arrangementet (standard: filnavnet)')
     ap.add_argument('--out', default='.', help='mappe der JSON- og IOF XML-fila skrives (lages om den mangler)')
-    ap.add_argument('--post', action='store_true', help='last opp til Livelox (krever LIVELOX_API_KEY)')
+    ap.add_argument('--post', action='store_true',
+                    help='last opp til Livelox (krever innlogging, se livelox_auth.py)')
     args = ap.parse_args()
 
     ev, files, geo, ocd = build(args)

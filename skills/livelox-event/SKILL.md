@@ -118,7 +118,10 @@ ledig port og bygger adressen av den (RFC 8252). `LIVELOX_CLIENT_ID` og
 - `POST /importableEvents/{id}/files/{fileName}` for hver fil (eller én zip).
 - `GET /importableEvents/{id}/validationErrors` før du sender brukeren videre.
 - `PUT /importableEvents/{id}` + `PUT /importableEvents/{id}/import` oppdaterer et
-  allerede importert arrangement **uten** omvei om nettleseren.
+  allerede importert arrangement **uten** omvei om nettleseren. Dette er riktig
+  vei for endrede løyper. `PUT /events/external/{importableEventId}` finnes også,
+  men dokumentasjonen sier at «only event name and classes will be updated», så
+  den dekker ikke løypeendringer.
 - Autorisering: OAuth2 med scope `events.import`. Livelox gir ikke klubber
   API-nøkkel, men regner et verktøy som dette som event management software.
   Klient-id-en `CourseImport` er på plass; ingen selvbetjent registrering, nye
