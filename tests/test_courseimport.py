@@ -240,6 +240,26 @@ class TestOpplasting(Fixtures):
         self.assertIn('The event must have a map.', r.stdout)
         self.assertNotIn('Åpne denne i nettleseren', r.stdout)
 
+    def test_utloept_token_fornyes(self):
+        """Et utløpt token skal fornyes med refresh-tokenet, uten innlogging."""
+        store = os.path.join(self.dir, 'tokens.json')
+        with open(store, 'w') as f:
+            json.dump({'access_token': 'gammelt', 'refresh_token': 'r1',
+                       'expires_in': 86400, 'obtained_at': 0}, f)
+        r = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS, 'livelox_event.py'), self.ppen,
+             '--start', '2026-05-12T18:00', '--end', '2026-05-12T21:00',
+             '--out', self.dir, '--post'],
+            capture_output=True, text=True,
+            env={k: v for k, v in os.environ.items() if k != 'LIVELOX_API_KEY'}
+                | {'LIVELOX_API': self.url, 'LIVELOX_TOKEN_FILE': store,
+                   'LIVELOX_NO_BROWSER': '1'})
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(self.state.token_calls, ['refresh_token'])
+        with open(store) as f:
+            self.assertEqual(json.load(f)['access_token'], 'fornyet-token')
+        self.assertEqual(len(self.state.events), 1)
+
     def test_uten_tilgang(self):
         r = subprocess.run(
             [sys.executable, os.path.join(SCRIPTS, 'livelox_event.py'), self.ppen,

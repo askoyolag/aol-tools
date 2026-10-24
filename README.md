@@ -68,14 +68,19 @@ kartet som `.ppen`-fila peker på.
 
 ### Tilgang
 
-Opplasting krever at Livelox har registrert verktøyet. Autorisering skjer med
-OAuth2 (Authorization Code med PKCE) og scope `events.import` – hver løypelegger
-godkjenner med sin egen Livelox-konto, og tokenet lagres lokalt i
-`~/.config/livelox/tokens.json`. Klient-id og redirect-URI settes med
-`LIVELOX_CLIENT_ID` og `LIVELOX_REDIRECT_URI`.
+Autorisering skjer med OAuth2 (Authorization Code med PKCE) og scope
+`events.import`. Hver løypelegger godkjenner med sin egen Livelox-konto, og
+tokenet lagres lokalt i `~/.config/livelox/tokens.json`.
 
-Skal klubben din bruke dette, ta kontakt med info@livelox.com om tilgang, eller
-med oss – det kan hende samme registrering kan dekke flere klubber.
+**Andre klubber trenger ingen egen registrering.** Klient-id-en `CourseImport`
+er registrert hos Livelox for dette verktøyet, og Livelox foretrekker at alle
+klubber bruker den samme – det er brukeren som gir tilgang, ikke klubben. Det
+holder altså å installere verktøyet og kjøre `livelox_auth.py`.
+
+Merk at opplastingen ikke er i drift ennå: per 24.10.2026 svarer Livelox 403 på
+alle kall mot `/importableEvents` selv med gyldig token og riktig scope. Saken
+er meldt til Livelox. Fram til den er løst lager skriptet en IOF XML-fil som
+lastes opp manuelt under Løyper.
 
 ## Bruk som Claude-plugin
 

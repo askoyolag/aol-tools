@@ -14,6 +14,7 @@ class State:
         self.validated = []
         self.imported = set()   # id-er som er fullført i Livelox
         self.reimports = []     # oppdateringer etter fullført import
+        self.token_calls = []   # grant_type for hvert kall mot /oauth2/token
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -34,10 +35,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return self.rfile.read(int(self.headers.get('Content-Length', 0)))
 
     def do_POST(self):
-        if not self._auth_ok():
-            return self._send(403, {'error': 'no credentials'})
         body = self._body()
         parts = self.path.strip('/').split('/')
+        if parts == ['oauth2', 'token']:          # dette endepunktet er uten Bearer
+            from urllib.parse import parse_qs
+            form = {k: v[0] for k, v in parse_qs(body.decode()).items()}
+            self.state.token_calls.append(form.get('grant_type'))
+            return self._send(200, {'access_token': 'fornyet-token',
+                                    'refresh_token': form.get('refresh_token', 'r'),
+                                    'expires_in': 86400, 'token_type': 'Bearer'})
+        if not self._auth_ok():
+            return self._send(403, {'error': 'no credentials'})
         if parts == ['importableEvents']:
             ev = json.loads(body)
             # Livelox gjenbruker id-en appen oppgir, ellers lager den en ny

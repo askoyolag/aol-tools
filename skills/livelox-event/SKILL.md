@@ -102,9 +102,15 @@ minner om det på treninger (`--level club`/`local`).
 
 `scripts/livelox_auth.py` håndterer innloggingen (OAuth2 Authorization Code med
 PKCE). Kjør den én gang per maskin: nettleseren åpnes, løypeleggeren logger inn
-i Livelox og godkjenner. Tokenet lagres i `~/.config/livelox/tokens.json` og
-fornyes automatisk – refresh-token utløper ikke. Klient-id og redirect-URI kan
-settes med `LIVELOX_CLIENT_ID` og `LIVELOX_REDIRECT_URI`.
+i Livelox og godkjenner. Tokenet lagres i `~/.config/livelox/tokens.json`,
+fornyes før det går ut, og refresh-tokenet utløper ikke. `--status` viser om
+maskinen er innlogget, `--logout` glemmer tokenet.
+
+Klient-id-en er `CourseImport`, registrert hos Livelox og ment å brukes av alle
+klubber – Livelox foretrekker én klient framfor én per klubb. Redirect-URI-en er
+ikke forhåndsregistrert: den sendes med til samtykkesiden, så skriptet binder en
+ledig port og bygger adressen av den (RFC 8252). `LIVELOX_CLIENT_ID` og
+`LIVELOX_REDIRECT_URI` overstyrer begge om det skulle trengs.
 
 ## API-et (api.livelox.com)
 
@@ -114,10 +120,16 @@ settes med `LIVELOX_CLIENT_ID` og `LIVELOX_REDIRECT_URI`.
 - `PUT /importableEvents/{id}` + `PUT /importableEvents/{id}/import` oppdaterer et
   allerede importert arrangement **uten** omvei om nettleseren.
 - Autorisering: OAuth2 med scope `events.import`. Livelox gir ikke klubber
-  API-nøkkel, men regner et verktøy som dette som event management software og
-  setter opp en klient-id mot en oppgitt redirect-URI. Avtales med
-  info@livelox.com; ingen selvbetjent registrering. Utløpt token gir HTTP 403,
-  og da fornyes det med refresh-tokenet.
+  API-nøkkel, men regner et verktøy som dette som event management software.
+  Klient-id-en `CourseImport` er på plass; ingen selvbetjent registrering, nye
+  klienter avtales med info@livelox.com. Utløpt token gir HTTP 403, og da
+  fornyes det med refresh-tokenet.
+- **Uavklart (24.10.2026):** alle kall mot `/importableEvents` svarer 403 med
+  tom kropp, også rett etter ny innlogging, mens samme token godtas av
+  `/events/external/{id}` (400 «Not enough parameters set») og manglende token
+  gir 401 om scopet. Tokenet er altså gyldig med riktig scope, men ikke
+  autorisert for importerbare arrangementer. Spørsmål sendt til Livelox; inntil
+  det er løst er manuell opplasting av IOF XML-fila veien.
 - Kartet kan lastes opp som `.ocd` (eller `.oom`, `.kmz`) – de bærer
   georefereringen selv, og da skal `georeference` utelates. Rasterkart
   (PNG/TIFF/JPEG/GIF) trenger world-fil eller koordinatmapping.
