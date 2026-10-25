@@ -147,8 +147,8 @@ Navneformen klubbens treninger har i Livelox er «Trening DD.MM.ÅÅÅÅ».
 ```
 python3 livelox_batch.py status <mappe> [--online]
 python3 livelox_batch.py run <plan.json> [--yes] [--verify]
-python3 livelox_batch.py adopt <løypefil> --id <id>
-python3 livelox_batch.py cleanup <mappe> [--yes]
+python3 livelox_batch.py adopt <løypefil> [--id <id>]
+python3 livelox_batch.py cleanup <mappe> [--yes] [--ids <id> ...]
 ```
 
 - `status` lister løypefilene med id, hva som er sendt eller importert, og en
@@ -169,13 +169,19 @@ avklart at tidligere opplastede filer følger med. Etter import tar
 
 ### Overgang fra den gamle id-ordningen (engangsjobb, oktober 2026)
 
-Fram til 25.10.2026 var id-en bare filnavnet. 22 løypefiler fra 2026 ble sendt
-slik, og én av dem importert: «Trening 10.09.2026» (Livelox 207001) med id
-`trening-sept-2026`, fra `Herdla/Trening sept 2026.ppen`. Rekkefølgen er:
+Før 25.10.2026 fantes ingen statusfil, og id-en var bare filnavnet. I
+publiseringstesten 25.10 ble 22 løypefiler fra 2026 likevel sendt med `--id`
+på formen `aol-<mappe>-<filnavn>`, og én av dem importert: «Trening
+10.09.2026» (Livelox 207001) fra `Herdla/Trening sept 2026.ppen`. Begge de
+gamle formene kjennes igjen, så ingen id trenger å skrives inn:
 
-1. `adopt "Herdla/Trening sept 2026.ppen" --id trening-sept-2026`, så Herdla
-   beholder id-en og blir kjent igjen som importert.
-2. `cleanup <arkiv>` – sletter de andre utkastene, som har feil dato.
+1. `adopt "Herdla/Trening sept 2026.ppen"` – prøver de gamle id-ene, velger den
+   som er importert, og skriver statusfila. Herdla blir da oppdatert, ikke
+   opprettet på nytt. Sjekk at utskriften sier «importert».
+2. `cleanup <arkiv>` – viser de andre utkastene (feil dato) og sletter dem etter
+   bekreftelse. Har en mappe æ/ø/å, kan id-en fra testen være skrevet
+   annerledes; sjekk at listen har de 21 utkastene fra testen, og legg ellers til de manglende
+   med `--ids`.
 3. `run` med en plan med riktige datoer for resten.
 
 ## API-et (api.livelox.com)

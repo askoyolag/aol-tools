@@ -6,8 +6,8 @@
 """Livelox for mange løypefiler om gangen: oversikt, opprydding og sending.
 
   python3 livelox_batch.py status <mappe> [--online]
-  python3 livelox_batch.py adopt <løypefil> --id <id>
-  python3 livelox_batch.py cleanup <mappe> [--yes]
+  python3 livelox_batch.py adopt <løypefil> [--id <id>]
+  python3 livelox_batch.py cleanup <mappe> [--yes] [--ids <id> ...]
   python3 livelox_batch.py run <plan.json> [--yes] [--verify]
 
 status   viser hver løypefil med id og hva som er sendt eller importert, og
@@ -15,8 +15,11 @@ status   viser hver løypefil med id og hva som er sendt eller importert, og
          kartet. --online spør Livelox om importer gjort i nettleseren.
 adopt    knytter en løypefil til en id som alt finnes i Livelox. Brukes når et
          arrangement er importert med en id fra før id-ordningen ble endret.
-cleanup  sletter importerbare arrangementer som er sendt med den gamle
-         id-ordningen (bare filnavnet) og ikke importert. Importerte røres ikke.
+         Uten --id prøves de gamle formene (bare filnavnet, og
+         aol-<mappe>-<filnavn>), og den som er importert, velges.
+cleanup  sletter importerbare arrangementer som er sendt med de gamle
+         id-formene og ikke importert. Importerte røres ikke, heller ikke
+         id-er som en statusfil peker på. --ids legger til flere id-er.
 run      sender det en plan beskriver. Verktøyet gjetter aldri dato eller
          klokkeslett; de må stå i planen:
 
@@ -106,13 +109,29 @@ def cmd_status(a):
     print('\n%d løypefiler.' % len(files))
 
 
+def lookup(eid, auth):
+    st, r = le.request('GET', '%s/importableEvents/%s?includeImportedEvent=true'
+                       % (le.API, urllib.parse.quote(eid)), auth)
+    return r if st == 200 and isinstance(r, dict) else None
+
+
 def cmd_adopt(a):
     rec = state.load(a.ppen)
-    if rec.get('id') and rec['id'] != a.id and not a.force:
+    auth = le.get_auth()
+    eid = a.id
+    if not eid:
+        found = [(i, lookup(i, auth)) for i in state.legacy_ids(a.ppen)]
+        found = [(i, r) for i, r in found if r]
+        found.sort(key=lambda x: not x[1].get('importedEvent'))
+        if not found:
+            sys.exit('Livelox kjenner ingen av de gamle id-ene (%s). Oppgi --id.'
+                     % ', '.join(state.legacy_ids(a.ppen)))
+        eid = found[0][0]
+    if rec.get('id') and rec['id'] != eid and not a.force:
         sys.exit('%s er alt knyttet til %s. Bruk --force for å bytte.' % (a.ppen, rec['id']))
-    state.save(a.ppen, dict(rec, id=a.id))
-    rec = le.refresh_state(a.ppen, a.id, le.get_auth())
-    print('%s -> %s: %s' % (os.path.basename(a.ppen), a.id, describe(rec)))
+    state.save(a.ppen, dict(rec, id=eid))
+    rec = le.refresh_state(a.ppen, eid, auth)
+    print('%s -> %s: %s' % (os.path.basename(a.ppen), eid, describe(rec)))
     if rec.get('livelox') == 'finnes ikke':
         print('Advarsel: Livelox kjenner ikke denne id-en.')
 
@@ -128,13 +147,13 @@ def confirm(question, yes):
 def cmd_cleanup(a):
     files = find_ppen(a.folder, include_old=True)
     keep = {state.load(f).get('id') for f in files} - {None}
-    cands = sorted({state.old_id(f) for f in files if not state.load(f)} - keep)
+    cands = {i for f in files if not state.load(f) for i in state.legacy_ids(f)}
+    cands = sorted((cands | set(a.ids or [])) - keep)
     auth = le.get_auth()
     delete, imported = [], []
     for oid in cands:
-        st, r = le.request('GET', '%s/importableEvents/%s?includeImportedEvent=true'
-                           % (le.API, urllib.parse.quote(oid)), auth)
-        if st != 200 or not isinstance(r, dict):
+        r = lookup(oid, auth)
+        if not r:
             continue
         (imported if r.get('importedEvent') else delete).append((oid, r.get('name', '')))
     for oid, name in imported:
@@ -205,9 +224,11 @@ def main():
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('status'); s.add_argument('folder')
     s.add_argument('--online', action='store_true'); s.add_argument('--include-old', action='store_true')
-    s = sub.add_parser('adopt'); s.add_argument('ppen'); s.add_argument('--id', required=True)
+    s = sub.add_parser('adopt'); s.add_argument('ppen')
+    s.add_argument('--id', help='uten --id prøves de gamle id-ene, og den importerte velges')
     s.add_argument('--force', action='store_true')
     s = sub.add_parser('cleanup'); s.add_argument('folder'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--ids', nargs='*', help='flere id-er å sjekke, f.eks. fra en tidligere kjøring')
     s = sub.add_parser('run'); s.add_argument('plan'); s.add_argument('--yes', action='store_true')
     s.add_argument('--verify', action='store_true')
     a = ap.parse_args()

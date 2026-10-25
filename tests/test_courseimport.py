@@ -300,6 +300,8 @@ class TestId(unittest.TestCase):
         # Må være byte for byte lik ordningen før 25.10, ellers finner
         # oppryddingen ikke utkastene som ble sendt med den.
         self.assertEqual(state.old_id('/arkiv/Herdla/Trening sept 2026.ppen'), 'trening-sept-2026')
+        self.assertEqual(state.legacy_ids('/arkiv/Herdla/Trening sept 2026.ppen'),
+                         ['trening-sept-2026', 'aol-herdla-trening-sept-2026'])
 
     def test_lange_navn_kortes_med_hash(self):
         i = state.new_id('/a/Friluften-Hanøy-Ramsøy/' + 'Veldig langt navn ' * 6 + '.ppen')
@@ -438,6 +440,28 @@ class TestBatch(MedMock):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.state.deleted, ['trening'])
         self.assertIn('importert, ikke rørt', r.stdout)
+
+    def test_cleanup_finner_aol_ider_fra_testen(self):
+        self.state.events['aol-testomrade-trening'] = {'name': 'utkast fra testen'}
+        self.state.events['annet'] = {'name': 'oppgitt med --ids'}
+        r = self.batch('cleanup', self.dir, '--yes', '--ids', 'annet')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(self.state.deleted), ['annet', 'aol-testomrade-trening'])
+
+    def test_adopt_uten_id_velger_den_importerte(self):
+        self.state.events['trening'] = {'name': 'utkast'}
+        self.state.events['aol-testomrade-trening'] = {'name': 'Trening 10.09.2026'}
+        self.state.imported.add('aol-testomrade-trening')
+        r = self.batch('adopt', self.ppen)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = state.load(self.ppen)
+        self.assertEqual(rec['id'], 'aol-testomrade-trening')
+        self.assertTrue(rec['imported'])
+
+    def test_adopt_uten_treff_stopper(self):
+        r = self.batch('adopt', self.ppen)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(state.path(self.ppen)))
 
     def test_adopt_knytter_fil_til_importert_id(self):
         self.state.events['trening-sept-2026'] = {'name': 'Trening 10.09.2026'}

@@ -45,6 +45,13 @@ def old_id(ppen):
     return slug(_stem(ppen))[:MAX_ID]
 
 
+def legacy_ids(ppen):
+    """Id-er en fil kan ha fått før statusfila fantes: bare filnavnet, og
+    `aol-<mappe>-<filnavn>`, som ble brukt med --id i publiseringstesten 25.10.2026."""
+    ids = [old_id(ppen), ('aol-' + new_id(ppen))[:MAX_ID]]
+    return list(dict.fromkeys(ids))
+
+
 def path(ppen):
     return ppen + SUFFIX
 
