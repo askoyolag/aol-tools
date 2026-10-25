@@ -13,7 +13,7 @@ class State:
         self.files = {}         # (id, filnavn) -> antall bytes
         self.validated = []
         self.imported = set()   # id-er som er fullført i Livelox
-        self.reimports = []     # oppdateringer etter fullført import
+        self.external_updates = []  # PUT /events/external/{id} etter fullført import
         self.token_calls = []   # grant_type for hvert kall mot /oauth2/token
 
 
@@ -64,23 +64,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {'error': self.path})
 
     def do_PUT(self):
+        """Bare det publiserte oppdateringsendepunktet. PUT mot /importableEvents
+        står i utkommenterte deler av Livelox-dokumentasjonen og skal ikke brukes,
+        så mocken svarer 404 på dem - en test som bruker dem ved et uhell feiler."""
         if not self._auth_ok():
             return self._send(403, {'error': 'no credentials'})
         body = self._body()
+        from urllib.parse import unquote
         parts = self.path.strip('/').split('/')
-        if len(parts) == 2 and parts[0] == 'importableEvents':
-            if parts[1] not in self.state.events:
-                return self._send(404, {'error': 'unknown event'})
-            self.state.events[parts[1]] = json.loads(body)
-            return self._send(200, {'id': parts[1]})
-        if len(parts) == 3 and parts[0] == 'importableEvents' and parts[2] == 'import':
-            if parts[1] not in self.state.imported:
-                return self._send(404, {'error': 'not imported yet'})
-            self.state.reimports.append(parts[1])
-            return self._send(200, {
-                'id': parts[1],
-                'liveloxShowEventUrl': 'https://www.livelox.com/Events/Show/4242',
-                'liveloxEditEventUrl': 'https://www.livelox.com/Admin/Events/Overview/4242'})
+        if len(parts) == 3 and parts[:2] == ['events', 'external']:
+            eid = unquote(parts[2])
+            if eid not in self.state.imported:
+                return self._send(404, {'error': 'not imported'})
+            self.state.events[eid] = json.loads(body)
+            self.state.external_updates.append(eid)
+            return self._send(200, {'operationId': 'op-%d' % len(self.state.external_updates)})
         self._send(404, {'error': self.path})
 
     def do_GET(self):
@@ -98,6 +96,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                '?importableEventIdentifier=' + eid}
             if eid in self.state.imported:
                 out['importedEvent'] = {'id': 4242, 'name': out.get('name')}
+                out['link']['liveloxShowEventUrl'] = 'https://www.livelox.com/Events/Show/4242'
             return self._send(200, out)
         parts = self.path.strip('/').split('/')
         if len(parts) == 3 and parts[2] == 'validationErrors':

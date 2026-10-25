@@ -222,7 +222,7 @@ class TestOpplasting(Fixtures):
         r = self.post()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(self.state.events), 1)
-        self.assertIn('Oppdaterer arrangementet', r.stdout)
+        self.assertIn('sender oppdatert versjon', r.stdout)
 
     def test_oppdatering_etter_import_gaar_uten_nettleser(self):
         self.assertEqual(self.post().returncode, 0)
@@ -230,8 +230,9 @@ class TestOpplasting(Fixtures):
         self.state.imported.add(eid)                 # noen har fullført importen
         r = self.post()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.state.reimports, [eid])
-        self.assertIn('oppdatert i Livelox', r.stdout)
+        self.assertEqual(self.state.external_updates, [eid])
+        self.assertIn('Oppdateringen er sendt til Livelox', r.stdout)
+        self.assertIn('Events/Show/4242', r.stdout)
         self.assertNotIn('Åpne denne i nettleseren', r.stdout)
 
     def test_valideringsfeil_stopper(self):

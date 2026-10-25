@@ -89,9 +89,11 @@ URL-en der løypeleggeren fullfører importen med ett klikk.
 
 Kjører du samme løypefil på nytt, oppdateres arrangementet i stedet for at det
 lages et nytt – id-en utledes av filnavnet, og skriptet sjekker først om Livelox
-kjenner den fra før. Er importen alt fullført, går oppdateringen helt uten
-nettleser (`PUT /importableEvents/{id}/import`). Navn og tidspunkt kan ikke
-endres den veien; det må gjøres i Livelox.
+kjenner den fra før. Er importen ikke fullført, sendes arrangementet på nytt med
+samme id. Er den fullført, går oppdateringen uten nettleser via
+`PUT /events/external/{id}`, slik Livelox anbefaler. Dokumentasjonen sier at
+bare navn og klasser oppdateres den veien, så kontroller løypene i Livelox etter
+en endring – det er ikke testet mot ekte API ennå.
 
 Finner valideringen feil, stopper skriptet og skriver dem ut i stedet for å
 sende løypeleggeren videre til en import som uansett ville blitt avvist.
@@ -117,22 +119,29 @@ ledig port og bygger adressen av den (RFC 8252). `LIVELOX_CLIENT_ID` og
 - `POST /importableEvents` → `{id, liveloxImportEventUrl}`.
 - `POST /importableEvents/{id}/files/{fileName}` for hver fil (eller én zip).
 - `GET /importableEvents/{id}/validationErrors` før du sender brukeren videre.
-- `PUT /importableEvents/{id}` + `PUT /importableEvents/{id}/import` oppdaterer et
-  allerede importert arrangement **uten** omvei om nettleseren. Dette er riktig
-  vei for endrede løyper. `PUT /events/external/{importableEventId}` finnes også,
-  men dokumentasjonen sier at «only event name and classes will be updated», så
-  den dekker ikke løypeendringer.
+- Et arrangement som alt er importert oppdateres med
+  `PUT /events/external/{importableEventId}` – uten omvei om nettleseren, og det
+  Livelox selv anbefaler (Mats Troeng, 24.10.2026). Svaret er en `operationId`;
+  oppdateringen behandles i bakgrunnen. Den publiserte dokumentasjonen sier at
+  «only event name and classes will be updated», så om løyper og poster blir
+  med, må prøves.
+- **Bruk bare publiserte endepunkter.** Livelox-sidene har utkommenterte avsnitt
+  (HTML-kommentarer) om `PUT /importableEvents/{id}` og
+  `PUT /importableEvents/{id}/import`. De er ikke del av API-et; et tidligere
+  utkast av dette verktøyet bygde på dem fordi tekstuttrekket tok med
+  kommentarene. Les dokumentasjonen i nettleser, ikke som rå HTML.
+- Et importerbart arrangement som ikke er importert ennå, oppdateres ved å
+  sende det på nytt med `POST /importableEvents` og samme `id` – Livelox
+  gjenbruker id-en.
 - Autorisering: OAuth2 med scope `events.import`. Livelox gir ikke klubber
   API-nøkkel, men regner et verktøy som dette som event management software.
   Klient-id-en `CourseImport` er på plass; ingen selvbetjent registrering, nye
   klienter avtales med info@livelox.com. Utløpt token gir HTTP 403, og da
   fornyes det med refresh-tokenet.
-- **Uavklart (24.10.2026):** alle kall mot `/importableEvents` svarer 403 med
-  tom kropp, også rett etter ny innlogging, mens samme token godtas av
-  `/events/external/{id}` (400 «Not enough parameters set») og manglende token
-  gir 401 om scopet. Tokenet er altså gyldig med riktig scope, men ikke
-  autorisert for importerbare arrangementer. Spørsmål sendt til Livelox; inntil
-  det er løst er manuell opplasting av IOF XML-fila veien.
+- 403 med tom kropp fra `/importableEvents`, mens samme token godtas andre
+  steder, betyr manglende tilgang – ikke utløpt token. Det skjedde 24.10.2026
+  og var feilkonfigurasjon hos Livelox, rettet samme kveld. Skjer det igjen:
+  meld det til info@livelox.com, og last opp IOF XML-fila manuelt så lenge.
 - Kartet kan lastes opp som `.ocd` (eller `.oom`, `.kmz`) – de bærer
   georefereringen selv, og da skal `georeference` utelates. Rasterkart
   (PNG/TIFF/JPEG/GIF) trenger world-fil eller koordinatmapping.

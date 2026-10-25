@@ -256,46 +256,48 @@ def validate(eid, auth):
 def send(ev, files, auth):
     """Oppretter arrangementet, eller oppdaterer det som allerede finnes.
 
-    Et arrangement som er importert i Livelox fra før oppdateres helt uten
-    omvei om nettleseren; det er bare første gang noen må klikke.
+    Bare publiserte endepunkter brukes. Et arrangement som alt er importert i
+    Livelox oppdateres med PUT /events/external/{id}, slik Livelox anbefaler -
+    uten omvei om nettleseren. Ellers sendes det importerbare arrangementet
+    (på nytt) med POST /importableEvents; Livelox gjenbruker id-en vi oppgir,
+    så det blir aldri dubletter.
     """
-    eid = ev['id']
+    eid = str(ev['id'])
+    qid = urllib.parse.quote(eid)
     st, existing = request('GET', '%s/importableEvents/%s?includeImportedEvent=true'
-                           % (API, urllib.parse.quote(str(eid))), auth)
+                           % (API, qid), auth)
     known = st == 200 and isinstance(existing, dict)
     imported = bool(known and existing.get('importedEvent'))
 
-    if known:
-        st, r = request('PUT', '%s/importableEvents/%s' % (API, urllib.parse.quote(str(eid))),
-                        auth, json.dumps(ev).encode('utf-8'))
-        if st != 200:
-            fail('Oppdatering av arrangementet', st, r)
-        print('Oppdaterer arrangementet som alt ligger i Livelox.')
-    else:
-        st, r = request('POST', API + '/importableEvents', auth,
+    if imported:
+        st, r = request('PUT', '%s/events/external/%s' % (API, qid), auth,
                         json.dumps(ev).encode('utf-8'))
         if st != 200:
-            fail('Oppretting av arrangementet', st, r)
-        eid = r.get('id', eid)
-        existing = r
+            fail('Oppdatering av arrangementet', st, r)
+        show = (existing.get('link') or {}).get('liveloxShowEventUrl') or ''
+        print('\nOppdateringen er sendt til Livelox%s.'
+              % (' (operasjon %s)' % r.get('operationId') if isinstance(r, dict) and r.get('operationId') else ''))
+        if show:
+            print('  %s' % show)
+        print('Livelox behandler den i bakgrunnen, vanligvis i løpet av sekunder.\n'
+              'Ifølge dokumentasjonen oppdateres bare navn og klasser denne veien -\n'
+              'kontroller løypene i Livelox, og rett dem der om de ikke ble med.')
+        return r
+
+    if known:
+        print('Arrangementet er sendt før, men ikke importert ennå - sender oppdatert versjon.')
+    st, r = request('POST', API + '/importableEvents', auth, json.dumps(ev).encode('utf-8'))
+    if st != 200:
+        fail('Oppretting av arrangementet', st, r)
+    eid = str(r.get('id', eid))
 
     upload(eid, files, auth)
     validate(eid, auth)
 
-    if imported:
-        st, r = request('PUT', '%s/importableEvents/%s/import'
-                        % (API, urllib.parse.quote(str(eid))), auth, b'')
-        if st != 200:
-            fail('Import av endringene', st, r)
-        print('\nLøypene er oppdatert i Livelox:\n  %s'
-              % (r.get('liveloxShowEventUrl') or ''))
-        print('Navn og tidspunkt endres ikke denne veien - det må gjøres i Livelox.')
-        return r
-
-    url = (existing.get('liveloxImportEventUrl')
-           or (existing.get('link') or {}).get('liveloxImportEventUrl'))
+    url = (r.get('liveloxImportEventUrl')
+           or (r.get('link') or {}).get('liveloxImportEventUrl'))
     print('\nÅpne denne i nettleseren og fullfør importen:\n  %s' % (url or '(ingen URL i svaret)'))
-    return existing
+    return r
 
 
 def main():

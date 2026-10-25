@@ -77,10 +77,8 @@ er registrert hos Livelox for dette verktøyet, og Livelox foretrekker at alle
 klubber bruker den samme – det er brukeren som gir tilgang, ikke klubben. Det
 holder altså å installere verktøyet og kjøre `livelox_auth.py`.
 
-Merk at opplastingen ikke er i drift ennå: per 24.10.2026 svarer Livelox 403 på
-alle kall mot `/importableEvents` selv med gyldig token og riktig scope. Saken
-er meldt til Livelox. Fram til den er løst lager skriptet en IOF XML-fil som
-lastes opp manuelt under Løyper.
+Skriptet lager alltid også en IOF XML-fil. Den kan lastes opp manuelt under
+Løyper i Livelox om opplastingen via API-et skulle feile.
 
 ## Bruk som Claude-plugin
 
