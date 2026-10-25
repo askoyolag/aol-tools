@@ -14,6 +14,9 @@ class State:
         self.validated = []
         self.imported = set()   # id-er som er fullført i Livelox
         self.external_updates = []  # PUT /events/external/{id} etter fullført import
+        self.deleted = []           # DELETE /importableEvents/{id}
+        self.courses_read = False   # har klienten scopet courses.read?
+        self.iof_override = None    # IOF XML som skal returneres i stedet for det lagrede
         self.token_calls = []   # grant_type for hvert kall mot /oauth2/token
 
 
@@ -81,10 +84,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(200, {'operationId': 'op-%d' % len(self.state.external_updates)})
         self._send(404, {'error': self.path})
 
+    def do_DELETE(self):
+        if not self._auth_ok():
+            return self._send(403, {'error': 'no credentials'})
+        from urllib.parse import unquote
+        parts = self.path.strip('/').split('/')
+        if len(parts) == 2 and parts[0] == 'importableEvents':
+            eid = unquote(parts[1])
+            if eid not in self.state.events:
+                return self._send(404, {'error': 'unknown event'})
+            del self.state.events[eid]
+            self.state.deleted.append(eid)
+            self.send_response(204); self.end_headers()
+            return
+        self._send(404, {'error': self.path})
+
+    def _iofxml(self, query):
+        """GET /orienteering/courses/iofxml - løypene til et importert arrangement."""
+        if not self.state.courses_read:
+            return self._send(403, {'error': "missing scope 'courses.read'"})
+        if self.state.iof_override is not None:
+            body = self.state.iof_override.encode('utf-8')
+        else:
+            imported = [e for e in self.state.imported if e in self.state.events]
+            if not imported:
+                return self._send(404, {'error': 'no such event'})
+            import iof_xml
+            from ocad_geo import utm_to_wgs84
+            ev = self.state.events[imported[-1]]
+            lonlat = {c['code']: utm_to_wgs84(c['projectedPosition']['x'],
+                                              c['projectedPosition']['y'], ev['projectionEpsgCode'])
+                      for c in ev['controls']}
+            body = iof_xml.course_data(ev, lonlat).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/xml')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         from urllib.parse import urlparse, unquote
         path = urlparse(self.path).path
         parts = path.strip('/').split('/')
+        if parts == ['orienteering', 'courses', 'iofxml']:
+            return self._iofxml(urlparse(self.path).query)
         if len(parts) == 2 and parts[0] == 'importableEvents':
             eid = unquote(parts[1])
             if eid not in self.state.events:

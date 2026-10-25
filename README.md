@@ -77,6 +77,10 @@ er registrert hos Livelox for dette verktøyet, og Livelox foretrekker at alle
 klubber bruker den samme – det er brukeren som gir tilgang, ikke klubben. Det
 holder altså å installere verktøyet og kjøre `livelox_auth.py`.
 
+For mange løypefiler om gangen finnes `livelox_batch.py`: `status` gir oversikt
+over hva som er sendt og importert, og `run` sender etter en plan med dato og
+tid for hver fil. Verktøyet gjetter aldri dato – den må oppgis.
+
 Skriptet lager alltid også en IOF XML-fil. Den kan lastes opp manuelt under
 Løyper i Livelox om opplastingen via API-et skulle feile.
 

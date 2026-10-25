@@ -10,25 +10,45 @@ import struct
 SCALE, EPSG, X0, Y0, ANGLE = 10000.0, 32632, 280000.0, 6700000.0, 0.0
 
 
-def ocd_map(path, scale=SCALE, x0=X0, y0=Y0, angle=ANGLE, epsg=EPSG):
-    """Skriver en .ocd med bare det parameterstrengen 1039 trenger.
+def ocd_map(path, scale=SCALE, x0=X0, y0=Y0, angle=ANGLE, epsg=EPSG, extent=None):
+    """Skriver en .ocd med parameterstrengen 1039 og eventuelt ett objekt.
 
-    Filen har ingen symboler eller objekter - skriptene leser kun
-    georefereringen fra den.
+    Uten extent har fila ingen objekter - skriptene leser da bare
+    georefereringen. Med extent=(venstre, bunn, høyre, topp) i papir-mm får den
+    ett flateobjekt med det omsluttende rektangelet, så kontrollen av poster
+    utenfor kartet har noe å måle mot.
     """
     setup = ('\tm%.6f\tg50.0000\tr1\tx%.0f\ty%.0f\ta%.8f\td250.00\ti2032\te%d'
              % (scale, x0, y0, angle, epsg)).encode('cp1252') + b'\x00'
     header = bytearray(48)
-    struct.pack_into('<hBBhBBII', header, 0, 0x0CAD, 0, 0, 2018, 0, 0, 0, 0)
     str_idx = len(header)                      # strengindeksblokk rett etter headeren
     block = bytearray(4 + 256 * 16)
     data_pos = str_idx + len(block)
     struct.pack_into('<I', block, 0, 0)        # ingen neste blokk
     struct.pack_into('<iiii', block, 4, data_pos, len(setup), 1039, 0)
+    obj_idx = 0
+    tail = b''
+    if extent:
+        obj_idx = data_pos + len(setup)
+        oblock = bytearray(4 + 256 * 40)
+        rec_pos = obj_idx + len(oblock)
+        L, B, R, T = (int(round(v * 100)) << 8 for v in extent)
+        struct.pack_into('<iiii', oblock, 4, L, B, R, T)
+        struct.pack_into('<iii', oblock, 4 + 16, rec_pos, 0, 301000)
+        oblock[4 + 28] = 3                     # flate
+        oblock[4 + 30] = 1                     # normal, synlig
+        rec = bytearray(56)
+        struct.pack_into('<iB', rec, 0, 301000, 3)
+        tail = bytes(oblock) + bytes(rec)
+    struct.pack_into('<hBBhBBII', header, 0, 0x0CAD, 0, 0, 2018, 0, 0, 0, obj_idx)
     struct.pack_into('<I', header, 32, str_idx)
     with open(path, 'wb') as f:
-        f.write(header); f.write(block); f.write(setup)
+        f.write(header); f.write(block); f.write(setup); f.write(tail)
     return path
+
+
+# Omsluttende rektangel for testkartet: romslig rundt løype A.
+EXTENT = (-50.0, -50.0, 150.0, 150.0)
 
 
 PPEN = '''<?xml version="1.0" encoding="utf-8"?>
@@ -55,10 +75,17 @@ PPEN = '''<?xml version="1.0" encoding="utf-8"?>
 '''
 
 
-def ppen_course(path, mapname='testkart.ocd'):
+def ppen_course(path, mapname='testkart.ocd', ppen=None):
     with open(path, 'w', encoding='utf-8') as f:
-        f.write(PPEN.format(mapname=mapname))
+        f.write((ppen or PPEN).format(mapname=mapname))
     return path
+
+
+# En løypefil uten løyper - Storasen 2026 var slik, og gikk rett gjennom.
+PPEN_TOM = PPEN[:PPEN.index('  <course id="1"')] + '</course-scribe-event>\n'
+
+# Løype A med post 32 flyttet 300 mm opp - 3 km utenfor testkartet.
+PPEN_UTENFOR = PPEN.replace('<location x="10" y="10" />', '<location x="10" y="300" />')
 
 
 # Fasit for løype A: postene ligger på 0/100/100+100/100 meter i kartplanet,

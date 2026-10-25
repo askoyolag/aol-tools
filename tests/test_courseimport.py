@@ -21,9 +21,12 @@ import xml.etree.ElementTree as ET                # noqa: E402
 
 class Fixtures(unittest.TestCase):
     def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.ocd = fixtures.ocd_map(os.path.join(self.dir, 'testkart.ocd'))
-        self.ppen = fixtures.ppen_course(os.path.join(self.dir, 'trening.ppen'))
+        self.dir = tempfile.mkdtemp()               # her havner JSON og XML
+        self.area = os.path.join(self.dir, 'Testomrade')   # som en mappe i kartarkivet
+        os.makedirs(self.area)
+        self.ocd = fixtures.ocd_map(os.path.join(self.area, 'testkart.ocd'),
+                                    extent=fixtures.EXTENT)
+        self.ppen = fixtures.ppen_course(os.path.join(self.area, 'trening.ppen'))
 
 
 class TestPurplePen(Fixtures):
@@ -136,7 +139,7 @@ class TestBygging(Fixtures):
     def test_bygger_arrangement(self):
         r = self.kjor()
         self.assertEqual(r.returncode, 0, r.stderr)
-        with open(os.path.join(self.dir, 'livelox-trening.json'), encoding='utf-8') as f:
+        with open(os.path.join(self.dir, 'livelox-testomrade-trening.json'), encoding='utf-8') as f:
             ev = json.load(f)
         self.assertEqual(ev['level'], 'club')            # club = trening i Livelox
         self.assertEqual(ev['country'], 'NOR')
@@ -154,7 +157,7 @@ class TestBygging(Fixtures):
         r = self.kjor()
         self.assertEqual(r.returncode, 0, r.stderr)
         ns = {'i': 'http://www.orienteering.org/datastandard/3.0'}
-        root = ET.parse(os.path.join(self.dir, 'livelox-trening.xml')).getroot()
+        root = ET.parse(os.path.join(self.dir, 'livelox-testomrade-trening.xml')).getroot()
         self.assertEqual(root.get('iofVersion'), '3.0')
         ctrl = {c.find('i:Id', ns).text: c for c in root.iter('{%s}Control' % ns['i'])
                 if c.find('i:Id', ns) is not None}
@@ -177,7 +180,7 @@ class TestBygging(Fixtures):
     def test_uten_kart(self):
         r = self.kjor('--no-map')
         self.assertEqual(r.returncode, 0, r.stderr)
-        with open(os.path.join(self.dir, 'livelox-trening.json'), encoding='utf-8') as f:
+        with open(os.path.join(self.dir, 'livelox-testomrade-trening.json'), encoding='utf-8') as f:
             self.assertNotIn('maps', json.load(f))
 
     def test_stopper_uten_georeferering(self):
@@ -190,7 +193,9 @@ class TestBygging(Fixtures):
         self.assertIn('ikke georeferert', r.stdout + r.stderr)
 
 
-class TestOpplasting(Fixtures):
+class MedMock(Fixtures):
+    """Fixtures pluss en etterligning av Livelox-API-et. Ingen tester her,
+    så klassene som arver den ikke kjører hverandres tester om igjen."""
     def setUp(self):
         super().setUp()
         self.url, self.state, self.stop = mock_livelox.start()
@@ -203,6 +208,9 @@ class TestOpplasting(Fixtures):
              '--out', self.dir, '--post', *args],
             capture_output=True, text=True,
             env=dict(os.environ, LIVELOX_API=self.url, LIVELOX_API_KEY='test'))
+
+
+class TestOpplasting(MedMock):
 
     def test_full_import(self):
         r = self.post()
@@ -275,3 +283,167 @@ class TestOpplasting(Fixtures):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ---------------------------------------------------------------- id og status
+import state                                       # noqa: E402
+
+
+class TestId(unittest.TestCase):
+    def test_samme_filnavn_i_ulike_mapper_gir_ulike_id(self):
+        a = state.new_id('/arkiv/Herdla/Trening sept 2026.ppen')
+        b = state.new_id('/arkiv/Flagget/Trening sept 2026.ppen')
+        self.assertEqual(a, 'herdla-trening-sept-2026')
+        self.assertNotEqual(a, b)
+
+    def test_gammel_id_er_bare_filnavnet(self):
+        # Må være byte for byte lik ordningen før 25.10, ellers finner
+        # oppryddingen ikke utkastene som ble sendt med den.
+        self.assertEqual(state.old_id('/arkiv/Herdla/Trening sept 2026.ppen'), 'trening-sept-2026')
+
+    def test_lange_navn_kortes_med_hash(self):
+        i = state.new_id('/a/Friluften-Hanøy-Ramsøy/' + 'Veldig langt navn ' * 6 + '.ppen')
+        self.assertLessEqual(len(i), 64)
+        self.assertRegex(i, r'-[0-9a-f]{7}$')
+
+    def test_samme_id_paa_windows_og_linux(self):
+        self.assertEqual(state.new_id('C:/Users/x/OneDrive/AOL-Kart/Herdla/Trening sept 2026.ppen'),
+                         state.new_id('/sessions/y/mnt/AOL-Kart/Herdla/Trening sept 2026.ppen'))
+
+
+class TestKontroller(Fixtures):
+    def kjor(self, *args):
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS, 'livelox_event.py'), self.ppen,
+                               '--start', '2026-05-12T18:00', '--end', '2026-05-12T21:00',
+                               '--out', self.dir, *args], capture_output=True, text=True)
+
+    def test_tom_loypefil_stopper(self):
+        fixtures.ppen_course(self.ppen, ppen=fixtures.PPEN_TOM)
+        r = self.kjor()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('ingen løyper', r.stdout + r.stderr)
+
+    def test_post_utenfor_kartet_stopper(self):
+        fixtures.ppen_course(self.ppen, ppen=fixtures.PPEN_UTENFOR)
+        r = self.kjor()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('utenfor kartet', r.stdout + r.stderr)
+        self.assertIn('32', r.stdout + r.stderr)
+
+    def test_utenfor_kan_overstyres(self):
+        fixtures.ppen_course(self.ppen, ppen=fixtures.PPEN_UTENFOR)
+        self.assertEqual(self.kjor('--allow-outside').returncode, 0)
+
+
+class TestStatusOgKontroll(MedMock):
+    def test_statusfil_skrives(self):
+        self.assertEqual(self.post().returncode, 0)
+        rec = state.load(self.ppen)
+        self.assertEqual(rec['id'], 'testomrade-trening')
+        self.assertFalse(rec['imported'])
+        self.assertIn('ImportEvent', rec['import_url'])
+        self.assertEqual(rec['map_file'], 'testkart.ocd')
+        self.assertEqual(len(rec['map_sha256']), 64)
+
+    def test_id_fra_statusfila_vinner(self):
+        """Slik beholder et importert arrangement id-en fra før ordningen ble endret."""
+        state.save(self.ppen, {'id': 'trening'})
+        self.assertEqual(self.post().returncode, 0)
+        self.assertEqual(list(self.state.events), ['trening'])
+
+    def test_statusfila_faar_vite_om_importen(self):
+        self.post()
+        eid, = list(self.state.events)
+        self.state.imported.add(eid)
+        self.post()
+        rec = state.load(self.ppen)
+        self.assertTrue(rec['imported'])
+        self.assertEqual(rec['livelox_event_id'], 4242)
+
+    def test_kontroll_stemmer(self):
+        self.post()
+        self.state.imported.add(next(iter(self.state.events)))
+        self.state.courses_read = True
+        r = self.post('--verify')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('alt stemmer', r.stdout)
+
+    def test_kontroll_finner_avvik(self):
+        self.post()
+        self.state.imported.add(next(iter(self.state.events)))
+        self.state.courses_read = True
+        ev = json.load(open(os.path.join(self.dir, 'livelox-testomrade-trening.json'), encoding='utf-8'))
+        ev['courses'][0]['controls'] = [{'code': c} for c in ('S', '32', '31', 'F')]
+        lonlat = {c['code']: utm_to_wgs84(c['projectedPosition']['x'], c['projectedPosition']['y'],
+                                          ev['projectionEpsgCode']) for c in ev['controls']}
+        import iof_xml
+        self.state.iof_override = iof_xml.course_data(ev, lonlat)
+        r = self.post('--verify')
+        self.assertIn('1 avvik', r.stdout)
+        self.assertIn('S-32-31-F', r.stdout)
+
+    def test_kontroll_uten_scope(self):
+        self.post()
+        self.state.imported.add(next(iter(self.state.events)))
+        r = self.post('--verify')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('courses.read', r.stdout)
+
+
+# ---------------------------------------------------------------- batch
+class TestBatch(MedMock):
+    def batch(self, *args):
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS, 'livelox_batch.py'), *args],
+                              capture_output=True, text=True,
+                              env=dict(os.environ, LIVELOX_API=self.url, LIVELOX_API_KEY='test'))
+
+    def plan(self, **item):
+        p = os.path.join(self.dir, 'plan.json')
+        entry = dict(ppen='Testomrade/trening.ppen', start='2026-09-10T18:00',
+                     end='2026-09-10T20:00', name='Trening 10.09.2026')
+        entry.update(item)
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump([entry], f)
+        return p
+
+    def test_plan_sendes_og_uendret_hoppes_over(self):
+        p = self.plan()
+        r = self.batch('run', p, '--yes')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('opprettes', r.stdout)
+        self.assertEqual(self.state.events['testomrade-trening']['name'], 'Trening 10.09.2026')
+        self.state.imported.add('testomrade-trening')
+        self.batch('run', p, '--yes')                  # første etter import: lagrer fingeravtrykket
+        r = self.batch('run', p, '--yes')
+        self.assertIn('uendret, hoppes over', r.stdout)
+        self.assertIn('Ingenting å sende', r.stdout)
+
+    def test_plan_uten_dato_avvises(self):
+        r = self.batch('run', self.plan(start=None), '--yes')
+        self.assertIn('mangler start', r.stdout)
+        self.assertEqual(self.state.events, {})
+
+    def test_plan_krever_bekreftelse(self):
+        r = self.batch('run', self.plan())             # ingen terminal, ingen --yes
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('--yes', r.stdout + r.stderr)
+        self.assertEqual(self.state.events, {})
+
+    def test_cleanup_sletter_bare_uimporterte_utkast(self):
+        fixtures.ppen_course(os.path.join(self.area, 'sept.ppen'))
+        self.state.events['trening'] = {'name': 'gammelt utkast'}     # gammel id, ikke importert
+        self.state.events['sept'] = {'name': 'importert'}             # gammel id, importert
+        self.state.imported.add('sept')
+        r = self.batch('cleanup', self.dir, '--yes')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.state.deleted, ['trening'])
+        self.assertIn('importert, ikke rørt', r.stdout)
+
+    def test_adopt_knytter_fil_til_importert_id(self):
+        self.state.events['trening-sept-2026'] = {'name': 'Trening 10.09.2026'}
+        self.state.imported.add('trening-sept-2026')
+        r = self.batch('adopt', self.ppen, '--id', 'trening-sept-2026')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = state.load(self.ppen)
+        self.assertEqual(rec['id'], 'trening-sept-2026')
+        self.assertTrue(rec['imported'])

@@ -114,6 +114,70 @@ ikke forhåndsregistrert: den sendes med til samtykkesiden, så skriptet binder 
 ledig port og bygger adressen av den (RFC 8252). `LIVELOX_CLIENT_ID` og
 `LIVELOX_REDIRECT_URI` overstyrer begge om det skulle trengs.
 
+## Id og statusfil
+
+Id-en et arrangement får i Livelox lages av **mappe og filnavn**
+(`herdla-trening-sept-2026`), så to løypefiler med samme navn i ulike mapper
+ikke overskriver hverandre. Bare navnene brukes, ikke hele stien, så id-en blir
+lik på Windows, i Linux-VM-en og i skyen.
+
+Ved siden av løypefila legges `<løypefil>.livelox.json`. Den husker id,
+import-lenke, når det ble sendt, om det er importert, Livelox-nummeret og en
+kontrollsum for kartet. **Finnes statusfila, gjelder id-en i den** – også om
+id-ordningen endres senere. Slett den ikke for et importert arrangement, ellers
+blir neste sending en ny import i stedet for en oppdatering.
+
+Før noe sendes sjekker skriptet at løypefila har minst én løype, og at alle
+postene ligger innenfor kartets utstrekning. `--allow-outside` overstyrer det
+siste. `--verify` leser løypene tilbake fra Livelox etterpå og melder avvik –
+det krever scopet `courses.read`, og Livelox gir bare ut løyper som er publisert.
+
+## Dato og tid er ikke verktøyets sak
+
+Løypefila har ingen dato, og verktøyet gjetter aldri. `--start` og `--end` må
+alltid oppgis, også i planer for `livelox_batch.py`. Den som kjører verktøyet
+– ofte en agent – må finne dem: spør løypeleggeren, eller hent dem fra
+Spond-arrangementet. **Bruk aldri filtid:** kopier i skyen får dagens dato, og
+det ga 22 arrangementer med feil dato i oktober 2026.
+
+Navneformen klubbens treninger har i Livelox er «Trening DD.MM.ÅÅÅÅ».
+
+## Mange løypefiler: `livelox_batch.py`
+
+```
+python3 livelox_batch.py status <mappe> [--online]
+python3 livelox_batch.py run <plan.json> [--yes] [--verify]
+python3 livelox_batch.py adopt <løypefil> --id <id>
+python3 livelox_batch.py cleanup <mappe> [--yes]
+```
+
+- `status` lister løypefilene med id, hva som er sendt eller importert, og en
+  rask sjekk (ingen løyper, kart mangler, ikke georeferert, poster utenfor).
+  `--online` spør Livelox om importer som er fullført i nettleseren.
+- `run` sender det en plan beskriver – en JSON-liste med `ppen`, `start`, `end`
+  og gjerne `name`. Planen vises først med handlingen for hver fil (opprettes,
+  sendes på nytt, oppdateres, uendret), og må bekreftes eller kjøres med
+  `--yes`. Importerte arrangementer som ikke er endret, hoppes over.
+- `adopt` knytter en løypefil til en id som alt finnes i Livelox.
+- `cleanup` sletter utkast sendt med den gamle id-ordningen som aldri ble
+  importert. Importerte røres aldri, og heller ikke id-er en statusfil peker på.
+
+Kart lastes opp på nytt hver gang et arrangement sendes før import. Det er med
+vilje: Livelox lager en ny intern nøkkel for hver sending, og det er ikke
+avklart at tidligere opplastede filer følger med. Etter import tar
+`/events/external` ikke imot filer i det hele tatt.
+
+### Overgang fra den gamle id-ordningen (engangsjobb, oktober 2026)
+
+Fram til 25.10.2026 var id-en bare filnavnet. 22 løypefiler fra 2026 ble sendt
+slik, og én av dem importert: «Trening 10.09.2026» (Livelox 207001) med id
+`trening-sept-2026`, fra `Herdla/Trening sept 2026.ppen`. Rekkefølgen er:
+
+1. `adopt "Herdla/Trening sept 2026.ppen" --id trening-sept-2026`, så Herdla
+   beholder id-en og blir kjent igjen som importert.
+2. `cleanup <arkiv>` – sletter de andre utkastene, som har feil dato.
+3. `run` med en plan med riktige datoer for resten.
+
 ## API-et (api.livelox.com)
 
 - `POST /importableEvents` → `{id, liveloxImportEventUrl}`.

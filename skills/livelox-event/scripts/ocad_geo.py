@@ -107,3 +107,32 @@ def utm_to_wgs84(easting, northing, epsg):
     lon0 = (zone - 1) * 6 - 180 + 3
     lon = lon0 + math.degrees(math.atan2(math.sinh(eta_), math.cos(xi_)))
     return lon, lat
+
+
+def map_extent(ocd):
+    """(venstre, bunn, høyre, topp) i papir-mm for alle synlige objekter i kartet.
+
+    Leser bare objektindeksen, der OCAD lagrer hvert objekts omsluttende
+    rektangel - ikke selve objektene. Det holder for å avsløre poster som
+    havner utenfor kartet, og går raskt også på kart på 60 MB. None om kartet
+    ikke har objekter.
+    """
+    import struct
+    o = ocd if hasattr(ocd, 'b') else OcadFile(ocd)
+    b, off, seen = o.b, o.obj_idx, set()
+    L = B = float('inf'); R = T = float('-inf')
+    while off and off not in seen and off + 4 <= len(b):
+        seen.add(off)
+        nxt, = struct.unpack_from('<i', b, off)
+        for i in range(256):
+            p = off + 4 + i * 40
+            if p + 40 > len(b):
+                break
+            pos, = struct.unpack_from('<i', b, p + 16)
+            status = b[p + 30]
+            if pos <= 0 or status != 1:
+                continue
+            l, bo, r, t = ((v >> 8) / 100.0 for v in struct.unpack_from('<iiii', b, p))
+            L, B, R, T = min(L, l), min(B, bo), max(R, r), max(T, t)
+        off = nxt if nxt > 0 else 0
+    return None if L == float('inf') else (L, B, R, T)
